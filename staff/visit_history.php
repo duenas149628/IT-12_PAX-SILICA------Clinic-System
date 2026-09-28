@@ -116,7 +116,7 @@ $visits = $stmt->fetchAll();
 
 <body>
 
-    <h1>My Visit History</h1>
+    <h1>Visit History</h1>
 
     <p>
         View your previous completed dental visits.

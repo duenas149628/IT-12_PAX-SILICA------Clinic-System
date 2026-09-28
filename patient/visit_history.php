@@ -8,30 +8,30 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'patient') {
     exit;
 }
 
-$user_id = $_SESSION['user_id'];
+$patientName = $_SESSION['name'] ?? 'Patient';
 
 /*
 |--------------------------------------------------------------------------
-| Get Patient ID
+| Get Patient
 |--------------------------------------------------------------------------
 */
 
-$patientStmt = $pdo->prepare(
-    "SELECT patient_id
+$stmt = $pdo->prepare(
+    "SELECT patient_id, patient_number
      FROM patients
      WHERE user_id = ?"
 );
 
-$patientStmt->execute([$user_id]);
+$stmt->execute([$_SESSION['user_id']]);
 
-$patient = $patientStmt->fetch();
+$patient = $stmt->fetch();
 
 if (!$patient) {
-    die('Patient profile not found.');
+    die('Patient record not found.');
 }
 
-$patient_id = $patient['patient_id'];
-
+$patientId = $patient['patient_id'];
+$patientNumber = $patient['patient_number'] ?? 'Not assigned';
 
 /*
 |--------------------------------------------------------------------------
@@ -39,23 +39,25 @@ $patient_id = $patient['patient_id'];
 |--------------------------------------------------------------------------
 */
 
-$visitStmt = $pdo->prepare(
+$stmt = $pdo->prepare(
     "SELECT
-        visit_id,
-        visit_date,
-        chief_complaint,
-        findings,
-        treatment,
-        notes,
-        follow_up
+        visit_records.visit_id,
+        visit_records.visit_date,
+        visit_records.chief_complaint,
+        visit_records.findings,
+        visit_records.treatment,
+        visit_records.notes,
+        visit_records.follow_up
      FROM visit_records
-     WHERE patient_id = ?
-     ORDER BY visit_date DESC, visit_id DESC"
+     WHERE visit_records.patient_id = ?
+     ORDER BY
+        visit_records.visit_date DESC,
+        visit_records.visit_id DESC"
 );
 
-$visitStmt->execute([$patient_id]);
+$stmt->execute([$patientId]);
 
-$visits = $visitStmt->fetchAll();
+$visits = $stmt->fetchAll();
 
 ?>
 
@@ -71,80 +73,414 @@ $visits = $visitStmt->fetchAll();
         content="width=device-width, initial-scale=1.0"
     >
 
-    <title>My Visit History - The Tooth Lounge</title>
+    <title>Visit History - The Tooth Lounge</title>
+
+    <link
+        rel="stylesheet"
+        href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"
+    >
 
     <style>
 
-        body {
-            font-family: Arial, sans-serif;
-            background: #f4f7f9;
+        * {
+            box-sizing: border-box;
             margin: 0;
             padding: 0;
         }
 
+        body {
+            min-height: 100vh;
+
+            font-family:
+                Arial,
+                Helvetica,
+                sans-serif;
+
+            color: #333;
+
+            background:
+                linear-gradient(
+                    rgba(0, 135, 155, 0.78),
+                    rgba(20, 85, 150, 0.78)
+                ),
+                url("https://images.unsplash.com/photo-1606811971618-4486d14f3f99?auto=format&fit=crop&w=1920&q=80");
+
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+        }
+
         .header {
-            background: #ffffff;
-            padding: 20px 40px;
-            border-bottom: 1px solid #ddd;
+            min-height: 75px;
+
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+
+            padding: 12px 35px;
+
+            background: rgba(255, 255, 255, 0.96);
+
+            box-shadow:
+                0 3px 15px rgba(0, 0, 0, 0.15);
         }
 
-        .header h1 {
-            margin: 0 0 5px;
+        .logo {
+            display: flex;
+            align-items: center;
+
+            gap: 12px;
+
+            color: #167b8c;
+
+            font-size: 21px;
+            font-weight: bold;
         }
 
-        .header p {
-            margin: 0;
-            color: #666;
+        .logo-icon {
+            width: 43px;
+            height: 43px;
+
+            display: flex;
+            align-items: center;
+            justify-content: center;
+
+            background: #e6f7fa;
+
+            border-radius: 50%;
+
+            color: #167b8c;
+
+            font-size: 21px;
+        }
+
+        .nav {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .nav a {
+            display: flex;
+            align-items: center;
+
+            gap: 7px;
+
+            padding: 10px 13px;
+
+            border-radius: 8px;
+
+            color: #555;
+
+            text-decoration: none;
+
+            font-size: 14px;
+
+            transition: 0.2s;
+        }
+
+        .nav a:hover {
+            background: #e6f7fa;
+            color: #167b8c;
+        }
+
+        .logout {
+            background: #167b8c !important;
+            color: white !important;
+            margin-left: 5px;
+        }
+
+        .logout:hover {
+            background: #126c79 !important;
         }
 
         .container {
-            max-width: 1000px;
+            width: 1100px;
+            max-width: 92%;
             margin: 40px auto;
-            padding: 0 20px;
         }
 
-        .visit {
-            background: #ffffff;
-            border: 1px solid #ddd;
-            border-radius: 10px;
-            padding: 25px;
-            margin-bottom: 20px;
+        .welcome {
+            margin-bottom: 25px;
+            color: white;
         }
 
-        .visit h2 {
-            margin-top: 0;
+        .welcome h1 {
+            font-size: 32px;
+            font-weight: 600;
+            margin-bottom: 8px;
         }
 
-        .visit-section {
-            margin-top: 20px;
+        .welcome p {
+            font-size: 16px;
+            opacity: 0.9;
         }
 
-        .visit-section strong {
-            display: block;
+        .patient-number {
+            display: inline-block;
+
+            margin-top: 10px;
+
+            padding: 7px 12px;
+
+            background: rgba(255, 255, 255, 0.18);
+
+            border: 1px solid rgba(255, 255, 255, 0.3);
+
+            border-radius: 20px;
+
+            font-size: 13px;
+        }
+
+        .panel {
+            padding: 30px;
+
+            background: rgba(255, 255, 255, 0.96);
+
+            border-radius: 15px;
+
+            box-shadow:
+                0 10px 30px rgba(0, 0, 0, 0.15);
+        }
+
+        .panel-header {
+            display: flex;
+
+            align-items: center;
+
+            gap: 15px;
+
+            margin-bottom: 25px;
+        }
+
+        .panel-icon {
+            width: 55px;
+            height: 55px;
+
+            display: flex;
+
+            align-items: center;
+            justify-content: center;
+
+            background: #e6f7fa;
+
+            color: #167b8c;
+
+            border-radius: 14px;
+
+            font-size: 23px;
+        }
+
+        .panel-header h2 {
+            color: #167b8c;
+            font-size: 22px;
+        }
+
+        .panel-header p {
+            margin-top: 5px;
+            color: #777;
+            font-size: 13px;
+        }
+
+        .visit-grid {
+            display: grid;
+
+            grid-template-columns:
+                repeat(2, 1fr);
+
+            gap: 18px;
+        }
+
+        .visit-card {
+            padding: 22px;
+
+            background: white;
+
+            border: 1px solid #e0e0e0;
+
+            border-radius: 12px;
+
+            transition: 0.2s;
+        }
+
+        .visit-card:hover {
+            background: #f1fbfc;
+
+            border-color: #168ca0;
+
+            transform: translateY(-2px);
+        }
+
+        .visit-header {
+            display: flex;
+
+            align-items: center;
+            justify-content: space-between;
+
+            gap: 10px;
+
+            margin-bottom: 18px;
+
+            padding-bottom: 15px;
+
+            border-bottom: 1px solid #eeeeee;
+        }
+
+        .visit-date {
+            color: #167b8c;
+
+            font-size: 17px;
+
+            font-weight: bold;
+        }
+
+        .visit-date i {
+            margin-right: 7px;
+        }
+
+        .visit-id {
+            padding: 5px 9px;
+
+            background: #e6f7fa;
+
+            color: #167b8c;
+
+            border-radius: 15px;
+
+            font-size: 11px;
+        }
+
+        .record {
+            margin-bottom: 15px;
+        }
+
+        .record:last-child {
+            margin-bottom: 0;
+        }
+
+        .record-label {
             margin-bottom: 5px;
+
+            color: #555;
+
+            font-size: 13px;
+
+            font-weight: bold;
         }
 
-        .visit-section p {
-            margin: 0;
-            line-height: 1.6;
-            color: #444;
+        .record-label i {
+            margin-right: 5px;
+            color: #167b8c;
+        }
+
+        .record-value {
+            color: #777;
+
+            font-size: 13px;
+
+            line-height: 1.5;
+
             white-space: pre-wrap;
         }
 
         .empty {
-            background: #ffffff;
-            border: 1px solid #ddd;
-            border-radius: 10px;
-            padding: 25px;
+            padding: 40px 20px;
+
+            text-align: center;
+
+            border: 1px dashed #cfdfe2;
+
+            border-radius: 12px;
+
+            color: #777;
         }
 
-        .navigation {
-            margin-top: 30px;
+        .empty i {
+            margin-bottom: 15px;
+
+            color: #167b8c;
+
+            font-size: 40px;
         }
 
-        .navigation a {
-            margin-right: 15px;
+        .empty h3 {
+            margin-bottom: 8px;
+            color: #555;
+        }
+
+        .button {
+            display: inline-flex;
+
+            align-items: center;
+            justify-content: center;
+
+            gap: 8px;
+
+            margin-top: 20px;
+
+            padding: 5px 15px;
+
+            background: #167b8c;
+
+            color: white;
+
+            border-radius: 8px;
+
             text-decoration: none;
+
+            font-size: 14px;
+
+            transition: 0.2s;
+        }
+
+        .button:hover {
+            background: #0a4242;
+            transform: translateY(-1px);
+        }
+
+        @media (max-width: 950px) {
+
+            .header {
+                padding: 12px 20px;
+            }
+
+            .visit-grid {
+                grid-template-columns: 1fr;
+            }
+
+        }
+
+        @media (max-width: 650px) {
+
+            .header {
+                flex-direction: column;
+                gap: 15px;
+                padding: 15px;
+            }
+
+            .nav {
+                flex-wrap: wrap;
+                justify-content: center;
+            }
+
+            .container {
+                max-width: 94%;
+                margin: 25px auto;
+            }
+
+            .welcome h1 {
+                font-size: 26px;
+            }
+
+            .panel {
+                padding: 20px;
+            }
+
+            .visit-header {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
         }
 
     </style>
@@ -153,143 +489,268 @@ $visits = $visitStmt->fetchAll();
 
 <body>
 
-    <div class="header">
+<header class="header">
 
-        <h1>My Visit History</h1>
+    <div class="logo">
 
-        <p>
-            View your previous clinic visit records.
-        </p>
+        <div class="logo-icon">
+            <i class="fa-solid fa-tooth"></i>
+        </div>
+
+        The Tooth Lounge
 
     </div>
 
+    <nav class="nav">
 
-    <div class="container">
+        <a href="dashboard.php">
+            <i class="fa-solid fa-gauge-high"></i>
+            Dashboard
+        </a>
+
+        <a href="profile.php">
+            <i class="fa-solid fa-user"></i>
+            Profile
+        </a>
+
+        <a href="appointments.php">
+            <i class="fa-solid fa-calendar-check"></i>
+            Appointments
+        </a>
+
+        <a href="visit_history.php">
+            <i class="fa-solid fa-file-medical"></i>
+            Records
+        </a>
+
+        <a
+            href="../auth/logout.php"
+            class="logout"
+        >
+            <i class="fa-solid fa-right-from-bracket"></i>
+            Logout
+        </a>
+
+    </nav>
+
+</header>
+
+<main class="container">
+
+    <section class="welcome">
+
+        <h1>
+            Visit History
+        </h1>
+
+        <p>
+            View your previous completed dental visit records.
+        </p>
+
+        <span class="patient-number">
+
+            <i class="fa-solid fa-id-card"></i>
+
+            Patient No:
+            <?= htmlspecialchars($patientNumber) ?>
+
+        </span>
+
+    </section>
+
+    <section class="panel">
+
+        <div class="panel-header">
+
+            <div class="panel-icon">
+                <i class="fa-solid fa-file-medical"></i>
+            </div>
+
+            <div>
+
+                <h2>
+                    Dental Visit Records
+                </h2>
+
+                <p>
+                    Your recorded dental visits and treatments.
+                </p>
+
+            </div>
+
+        </div>
 
         <?php if (empty($visits)): ?>
 
             <div class="empty">
 
+                <i class="fa-solid fa-folder-open"></i>
+
+                <h3>
+                    No Visit Records
+                </h3>
+
                 <p>
-                    You do not have any visit records yet.
+                    You currently have no completed visit records.
                 </p>
+
+                <a
+                    href="dashboard.php"
+                    class="button"
+                >
+                    <i class="fa-solid fa-arrow-left"></i>
+                    Back to Dashboard
+                </a>
 
             </div>
 
         <?php else: ?>
 
-            <?php foreach ($visits as $visit): ?>
+            <div class="visit-grid">
 
-                <div class="visit">
+                <?php foreach ($visits as $visit): ?>
 
-                    <h2>
-                        Visit Date:
-                        <?= htmlspecialchars($visit['visit_date']) ?>
-                    </h2>
+                    <div class="visit-card">
 
+                        <div class="visit-header">
 
-                    <div class="visit-section">
+                            <div class="visit-date">
 
-                        <strong>
-                            Chief Complaint
-                        </strong>
+                                <i class="fa-solid fa-calendar-check"></i>
 
-                        <p>
-                            <?= htmlspecialchars(
-                                $visit['chief_complaint'] ?? ''
-                            ) ?>
-                        </p>
+                                <?= htmlspecialchars(
+                                    $visit['visit_date']
+                                ) ?>
+
+                            </div>
+
+                            <span class="visit-id">
+
+                                Visit #
+                                <?= htmlspecialchars(
+                                    $visit['visit_id']
+                                ) ?>
+
+                            </span>
+
+                        </div>
+
+                        <div class="record">
+
+                            <div class="record-label">
+
+                                <i class="fa-solid fa-comment-medical"></i>
+
+                                Chief Complaint
+
+                            </div>
+
+                            <div class="record-value">
+
+                                <?= htmlspecialchars(
+                                    $visit['chief_complaint']
+                                    ?: 'Not recorded'
+                                ) ?>
+
+                            </div>
+
+                        </div>
+
+                        <div class="record">
+
+                            <div class="record-label">
+
+                                <i class="fa-solid fa-magnifying-glass"></i>
+
+                                Findings
+
+                            </div>
+
+                            <div class="record-value">
+
+                                <?= htmlspecialchars(
+                                    $visit['findings']
+                                    ?: 'Not recorded'
+                                ) ?>
+
+                            </div>
+
+                        </div>
+
+                        <div class="record">
+
+                            <div class="record-label">
+
+                                <i class="fa-solid fa-tooth"></i>
+
+                                Treatment
+
+                            </div>
+
+                            <div class="record-value">
+
+                                <?= htmlspecialchars(
+                                    $visit['treatment']
+                                    ?: 'Not recorded'
+                                ) ?>
+
+                            </div>
+
+                        </div>
+
+                        <div class="record">
+
+                            <div class="record-label">
+
+                                <i class="fa-solid fa-note-sticky"></i>
+
+                                Notes
+
+                            </div>
+
+                            <div class="record-value">
+
+                                <?= htmlspecialchars(
+                                    $visit['notes']
+                                    ?: 'Not recorded'
+                                ) ?>
+
+                            </div>
+
+                        </div>
+
+                        <div class="record">
+
+                            <div class="record-label">
+
+                                <i class="fa-solid fa-calendar-plus"></i>
+
+                                Follow-Up
+
+                            </div>
+
+                            <div class="record-value">
+
+                                <?= htmlspecialchars(
+                                    $visit['follow_up']
+                                    ?: 'Not recorded'
+                                ) ?>
+
+                            </div>
+
+                        </div>
 
                     </div>
 
+                <?php endforeach; ?>
 
-                    <div class="visit-section">
-
-                        <strong>
-                            Findings
-                        </strong>
-
-                        <p>
-                            <?= htmlspecialchars(
-                                $visit['findings'] ?? ''
-                            ) ?>
-                        </p>
-
-                    </div>
-
-
-                    <div class="visit-section">
-
-                        <strong>
-                            Treatment
-                        </strong>
-
-                        <p>
-                            <?= htmlspecialchars(
-                                $visit['treatment'] ?? ''
-                            ) ?>
-                        </p>
-
-                    </div>
-
-
-                    <div class="visit-section">
-
-                        <strong>
-                            Notes
-                        </strong>
-
-                        <p>
-                            <?= htmlspecialchars(
-                                $visit['notes'] ?? ''
-                            ) ?>
-                        </p>
-
-                    </div>
-
-
-                    <div class="visit-section">
-
-                        <strong>
-                            Follow-up
-                        </strong>
-
-                        <p>
-                            <?= htmlspecialchars(
-                                $visit['follow_up'] ?? ''
-                            ) ?>
-                        </p>
-
-                    </div>
-
-                </div>
-
-            <?php endforeach; ?>
+            </div>
 
         <?php endif; ?>
 
+    </section>
 
-        <div class="navigation">
-
-            <a href="dashboard.php">
-                Patient Dashboard
-            </a>
-
-            <a href="appointments.php">
-                My Appointments
-            </a>
-
-            <a href="profile.php">
-                My Profile
-            </a>
-
-            <a href="../auth/logout.php">
-                Logout
-            </a>
-
-        </div>
-
-    </div>
+</main>
 
 </body>
 

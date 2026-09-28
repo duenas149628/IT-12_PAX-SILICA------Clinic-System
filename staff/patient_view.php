@@ -12,89 +12,68 @@ if ($_SESSION['role'] !== 'staff') {
     die('Access denied.');
 }
 
-$patient_id = $_GET['id'] ?? null;
+$search = trim($_GET['search'] ?? '');
 
-if (!$patient_id || !ctype_digit($patient_id)) {
-    die('Invalid patient.');
+/*
+|--------------------------------------------------------------------------
+| Get Visit Records
+|--------------------------------------------------------------------------
+*/
+
+if ($search !== '') {
+
+    $stmt = $pdo->prepare(
+        "SELECT
+            visit_records.visit_id,
+            visit_records.visit_date,
+            visit_records.chief_complaint,
+            patients.patient_id,
+            patients.patient_number,
+            patients.first_name,
+            patients.last_name
+         FROM visit_records
+         INNER JOIN patients
+            ON visit_records.patient_id = patients.patient_id
+         WHERE
+            patients.patient_number LIKE ?
+            OR patients.first_name LIKE ?
+            OR patients.last_name LIKE ?
+            OR visit_records.chief_complaint LIKE ?
+            OR visit_records.treatment LIKE ?
+         ORDER BY
+            visit_records.visit_date DESC,
+            visit_records.visit_id DESC"
+    );
+
+    $searchTerm = '%' . $search . '%';
+
+    $stmt->execute([
+        $searchTerm,
+        $searchTerm,
+        $searchTerm,
+        $searchTerm,
+        $searchTerm
+    ]);
+
+} else {
+
+    $stmt = $pdo->query(
+        "SELECT
+            visit_records.visit_id,
+            visit_records.visit_date,
+            visit_records.chief_complaint,
+            patients.patient_id,
+            patients.patient_number,
+            patients.first_name,
+            patients.last_name
+         FROM visit_records
+         INNER JOIN patients
+            ON visit_records.patient_id = patients.patient_id
+         ORDER BY
+            visit_records.visit_date DESC,
+            visit_records.visit_id DESC"
+    );
 }
-
-$patient_id = (int) $patient_id;
-
-/*
-|--------------------------------------------------------------------------
-| Get Patient Information
-|--------------------------------------------------------------------------
-*/
-
-$stmt = $pdo->prepare(
-    "SELECT
-        patients.*,
-        users.email
-     FROM patients
-     INNER JOIN users
-        ON patients.user_id = users.user_id
-     WHERE patients.patient_id = ?"
-);
-
-$stmt->execute([$patient_id]);
-
-$patient = $stmt->fetch();
-
-if (!$patient) {
-    die('Patient not found.');
-}
-
-/*
-|--------------------------------------------------------------------------
-| Get Patient Appointments
-|--------------------------------------------------------------------------
-*/
-
-$stmt = $pdo->prepare(
-    "SELECT
-        appointment_id,
-        preferred_date,
-        preferred_start_time,
-        preferred_end_time,
-        confirmed_date,
-        confirmed_start_time,
-        confirmed_end_time,
-        reason,
-        status
-     FROM appointments
-     WHERE patient_id = ?
-     ORDER BY
-        COALESCE(confirmed_date, preferred_date) DESC,
-        appointment_id DESC"
-);
-
-$stmt->execute([$patient_id]);
-
-$appointments = $stmt->fetchAll();
-
-/*
-|--------------------------------------------------------------------------
-| Get Patient Visit Records
-|--------------------------------------------------------------------------
-*/
-
-$stmt = $pdo->prepare(
-    "SELECT
-        visit_id,
-        appointment_id,
-        visit_date,
-        chief_complaint,
-        findings,
-        treatment,
-        notes,
-        follow_up
-     FROM visit_records
-     WHERE patient_id = ?
-     ORDER BY visit_date DESC,
-              visit_id DESC"
-);
-
-$stmt->execute([$patient_id]);
 
 $visits = $stmt->fetchAll();
 
@@ -112,269 +91,1051 @@ $visits = $stmt->fetchAll();
         content="width=device-width, initial-scale=1.0"
     >
 
-    <title>
-        Patient Record - The Tooth Lounge
-    </title>
+    <title>Visit Records - The Tooth Lounge</title>
+
+
+    <!-- Font Awesome -->
+
+    <link
+        rel="stylesheet"
+        href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"
+    >
+
 
     <style>
 
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
         body {
-            font-family: Arial, sans-serif;
-            max-width: 1100px;
-            margin: 40px auto;
-            padding: 20px;
+
+            min-height: 100vh;
+
+            font-family:
+                Arial,
+                Helvetica,
+                sans-serif;
+
+            color: #333;
+
+            background:
+                linear-gradient(
+                    rgba(0, 135, 155, 0.78),
+                    rgba(20, 85, 150, 0.78)
+                ),
+
+                url("https://images.unsplash.com/photo-1606811971618-4486d14f3f99?auto=format&fit=crop&w=1920&q=80");
+
+            background-size: cover;
+
+            background-position: center;
+
+            background-attachment: fixed;
         }
 
-        .section {
-            border: 1px solid #ccc;
-            padding: 20px;
-            margin-top: 20px;
+
+        /* HEADER */
+
+        .header {
+
+            min-height: 75px;
+
+            display: flex;
+
+            align-items: center;
+
+            justify-content: space-between;
+
+            padding: 12px 35px;
+
+            background: rgba(255, 255, 255, 0.96);
+
+            box-shadow:
+                0 3px 15px rgba(0, 0, 0, 0.15);
+        }
+
+
+        .logo {
+
+            display: flex;
+
+            align-items: center;
+
+            gap: 12px;
+
+            color: #167b8c;
+
+            font-size: 21px;
+
+            font-weight: bold;
+        }
+
+
+        .logo-icon {
+
+            width: 43px;
+
+            height: 43px;
+
+            display: flex;
+
+            align-items: center;
+
+            justify-content: center;
+
+            background: #e6f7fa;
+
+            border-radius: 50%;
+
+            color: #167b8c;
+
+            font-size: 21px;
+        }
+
+
+        /* NAVIGATION */
+
+        .nav {
+
+            display: flex;
+
+            align-items: center;
+
+            gap: 5px;
+        }
+
+
+        .nav a {
+
+            display: flex;
+
+            align-items: center;
+
+            gap: 7px;
+
+            padding: 10px 13px;
+
             border-radius: 8px;
+
+            color: #555;
+
+            text-decoration: none;
+
+            font-size: 14px;
+
+            transition: 0.2s;
         }
 
-        .info-row {
-            margin-top: 10px;
+
+        .nav a:hover {
+
+            background: #e6f7fa;
+
+            color: #167b8c;
         }
 
-        .info-row strong {
-            display: inline-block;
-            min-width: 160px;
+
+        .nav a.active {
+
+            background: #e6f7fa;
+
+            color: #167b8c;
+
+            font-weight: 600;
         }
+
+
+        .logout {
+
+            background: #167b8c !important;
+
+            color: white !important;
+        }
+
+
+        .logout:hover {
+
+            background: #126c79 !important;
+        }
+
+
+        /* MAIN */
+
+        .container {
+
+            width: 1200px;
+
+            max-width: 94%;
+
+            margin: 40px auto;
+        }
+
+
+        .page-title {
+
+            color: white;
+
+            margin-bottom: 25px;
+        }
+
+
+        .page-title h1 {
+
+            display: flex;
+
+            align-items: center;
+
+            gap: 12px;
+
+            font-size: 30px;
+
+            margin-bottom: 8px;
+        }
+
+
+        .page-title p {
+
+            font-size: 15px;
+
+            opacity: 0.9;
+        }
+
+
+        /* SEARCH CARD */
+
+        .search-card {
+
+            padding: 20px 25px;
+
+            margin-bottom: 20px;
+
+            background:
+                rgba(255, 255, 255, 0.97);
+
+            border-radius: 14px;
+
+            box-shadow:
+                0 8px 25px rgba(0, 0, 0, 0.14);
+        }
+
+
+        .search-form {
+
+            display: flex;
+
+            align-items: center;
+
+            gap: 10px;
+        }
+
+
+        .search-input-wrapper {
+
+            position: relative;
+
+            flex: 1;
+        }
+
+
+        .search-input-wrapper i {
+
+            position: absolute;
+
+            left: 14px;
+
+            top: 50%;
+
+            transform: translateY(-50%);
+
+            color: #167b8c;
+        }
+
+
+        .search-input {
+
+            width: 100%;
+
+            padding: 12px 15px 12px 42px;
+
+            border: 1px solid #d5dfe2;
+
+            border-radius: 8px;
+
+            outline: none;
+
+            font-size: 14px;
+        }
+
+
+        .search-input:focus {
+
+            border-color: #167b8c;
+
+            box-shadow:
+                0 0 0 3px
+                rgba(22, 123, 140, 0.1);
+        }
+
+
+        .search-button {
+
+            display: inline-flex;
+
+            align-items: center;
+
+            justify-content: center;
+
+            gap: 7px;
+
+            padding: 12px 18px;
+
+            border: none;
+
+            border-radius: 8px;
+
+            background: #167b8c;
+
+            color: white;
+
+            font-size: 14px;
+
+            cursor: pointer;
+        }
+
+
+        .search-button:hover {
+
+            background: #126c79;
+        }
+
+
+        .clear-button {
+
+            display: inline-flex;
+
+            align-items: center;
+
+            gap: 6px;
+
+            padding: 12px 15px;
+
+            background: #f2f2f2;
+
+            color: #555;
+
+            text-decoration: none;
+
+            border-radius: 8px;
+
+            font-size: 14px;
+        }
+
+
+        .clear-button:hover {
+
+            background: #e5e5e5;
+        }
+
+
+        .search-result {
+
+            margin-top: 15px;
+
+            color: #666;
+
+            font-size: 14px;
+        }
+
+
+        .search-result strong {
+
+            color: #167b8c;
+        }
+
+
+        /* SUMMARY */
+
+        .summary {
+
+            display: flex;
+
+            align-items: center;
+
+            gap: 12px;
+
+            margin-bottom: 15px;
+
+            color: white;
+
+            font-size: 14px;
+        }
+
+
+        .summary-icon {
+
+            width: 35px;
+
+            height: 35px;
+
+            display: flex;
+
+            align-items: center;
+
+            justify-content: center;
+
+            background:
+                rgba(255, 255, 255, 0.2);
+
+            border-radius: 50%;
+        }
+
+
+        .count {
+
+            display: inline-flex;
+
+            align-items: center;
+
+            justify-content: center;
+
+            min-width: 32px;
+
+            height: 30px;
+
+            padding: 0 10px;
+
+            background: white;
+
+            color: #167b8c;
+
+            border-radius: 20px;
+
+            font-weight: bold;
+        }
+
+
+        /* TABLE */
+
+        .table-container {
+
+            background:
+                rgba(255, 255, 255, 0.97);
+
+            border-radius: 15px;
+
+            overflow-x: auto;
+
+            box-shadow:
+                0 10px 30px rgba(0, 0, 0, 0.15);
+        }
+
 
         table {
+
             width: 100%;
+
+            min-width: 900px;
+
             border-collapse: collapse;
-            margin-top: 15px;
         }
 
-        th,
-        td {
-            border: 1px solid #ccc;
-            padding: 10px;
-            text-align: left;
-        }
 
         th {
-            background: #f5f5f5;
+
+            padding: 16px;
+
+            background: #e6f7fa;
+
+            color: #167b8c;
+
+            text-align: left;
+
+            font-size: 13px;
+
+            font-weight: 600;
+
+            border-bottom:
+                1px solid #d6edef;
         }
 
-        .visit {
-            border: 1px solid #ddd;
-            padding: 15px;
-            margin-top: 15px;
-            border-radius: 6px;
+
+        td {
+
+            padding: 15px 16px;
+
+            border-bottom:
+                1px solid #eeeeee;
+
+            color: #555;
+
+            font-size: 14px;
+
+            vertical-align: middle;
         }
 
-        .field {
-            margin-top: 12px;
+
+        tbody tr {
+
+            transition: 0.2s;
         }
 
-        .field strong {
-            display: block;
-            margin-bottom: 4px;
+
+        tbody tr:hover {
+
+            background: #f7fcfd;
+
+            transform: scale(1.002);
         }
 
-        .button {
-            display: inline-block;
-            padding: 10px 16px;
-            margin-top: 15px;
-            background: #333;
+
+        tbody tr:last-child td {
+
+            border-bottom: none;
+        }
+
+
+        /* PATIENT */
+
+        .patient-name {
+
+            display: flex;
+
+            align-items: center;
+
+            gap: 10px;
+
+            color: #333;
+
+            font-weight: 600;
+        }
+
+
+        .patient-icon {
+
+            width: 38px;
+
+            height: 38px;
+
+            display: flex;
+
+            align-items: center;
+
+            justify-content: center;
+
+            background: #e6f7fa;
+
+            color: #167b8c;
+
+            border-radius: 50%;
+        }
+
+
+        .patient-number {
+
+            color: #167b8c;
+
+            font-weight: 600;
+        }
+
+
+        /* DATE */
+
+        .visit-date {
+
+            display: flex;
+
+            align-items: center;
+
+            gap: 8px;
+
+            color: #555;
+        }
+
+
+        .visit-date i {
+
+            color: #167b8c;
+        }
+
+
+        /* VIEW BUTTON */
+
+        .view-button {
+
+            display: inline-flex;
+
+            align-items: center;
+
+            gap: 7px;
+
+            padding: 9px 14px;
+
+            background: #167b8c;
+
             color: white;
+
             text-decoration: none;
-            border-radius: 5px;
+
+            border-radius: 7px;
+
+            font-size: 13px;
+
+            font-weight: 500;
+
+            transition: 0.2s;
         }
+
+
+        .view-button:hover {
+
+            background: #126c79;
+
+            transform: translateY(-1px);
+        }
+
+
+        /* EMPTY */
 
         .empty {
-            padding: 15px;
-            border: 1px solid #ddd;
-            margin-top: 15px;
+
+            padding: 60px 30px;
+
+            text-align: center;
+
+            background:
+                rgba(255, 255, 255, 0.97);
+
+            border-radius: 15px;
+
+            box-shadow:
+                0 10px 30px rgba(0, 0, 0, 0.15);
         }
 
-        a {
-            display: inline-block;
-            margin-top: 15px;
+
+        .empty-icon {
+
+            width: 70px;
+
+            height: 70px;
+
+            display: flex;
+
+            align-items: center;
+
+            justify-content: center;
+
+            margin: 0 auto 20px;
+
+            background: #e6f7fa;
+
+            color: #167b8c;
+
+            border-radius: 50%;
+
+            font-size: 28px;
+        }
+
+
+        .empty h2 {
+
+            margin-bottom: 8px;
+
+            color: #444;
+
+            font-size: 20px;
+        }
+
+
+        .empty p {
+
+            color: #777;
+
+            font-size: 14px;
+        }
+
+
+        /* BOTTOM NAVIGATION */
+
+        .bottom-navigation {
+
+            display: flex;
+
+            flex-wrap: wrap;
+
+            gap: 10px;
+
+            margin-top: 25px;
+        }
+
+
+        .bottom-navigation a {
+
+            display: inline-flex;
+
+            align-items: center;
+
+            gap: 7px;
+
+            padding: 10px 14px;
+
+            background:
+                rgba(255, 255, 255, 0.95);
+
+            color: #555;
+
+            text-decoration: none;
+
+            border-radius: 8px;
+
+            font-size: 13px;
+
+            box-shadow:
+                0 3px 10px rgba(0, 0, 0, 0.08);
+        }
+
+
+        .bottom-navigation a:hover {
+
+            color: #167b8c;
+
+            background: white;
+        }
+
+
+        /* RESPONSIVE */
+
+        @media (max-width: 900px) {
+
+            .header {
+
+                flex-direction: column;
+
+                gap: 15px;
+
+                padding: 15px 20px;
+            }
+
+
+            .nav {
+
+                flex-wrap: wrap;
+
+                justify-content: center;
+            }
+
+
+            .search-form {
+
+                flex-wrap: wrap;
+            }
+
+
+            .search-input-wrapper {
+
+                width: 100%;
+
+                flex-basis: 100%;
+            }
+
+        }
+
+
+        @media (max-width: 600px) {
+
+            .page-title h1 {
+
+                font-size: 25px;
+            }
+
+
+            .search-button,
+            .clear-button {
+
+                flex: 1;
+
+                justify-content: center;
+            }
+
+
+            .bottom-navigation {
+
+                flex-direction: column;
+            }
+
+
+            .bottom-navigation a {
+
+                justify-content: center;
+            }
+
         }
 
     </style>
 
 </head>
 
+
 <body>
 
-    <h1>
-        Patient Record
-    </h1>
+
+<!-- HEADER -->
+
+<header class="header">
 
 
-    <!-- PATIENT INFORMATION -->
+    <div class="logo">
 
-    <div class="section">
+        <div class="logo-icon">
 
-        <h2>
-            Patient Information
-        </h2>
-
-        <div class="info-row">
-
-            <strong>
-                Patient Number:
-            </strong>
-
-            <?= htmlspecialchars(
-                $patient['patient_number']
-            ) ?>
+            <i class="fa-solid fa-tooth"></i>
 
         </div>
 
-
-        <div class="info-row">
-
-            <strong>
-                First Name:
-            </strong>
-
-            <?= htmlspecialchars(
-                $patient['first_name']
-            ) ?>
-
-        </div>
-
-
-        <div class="info-row">
-
-            <strong>
-                Last Name:
-            </strong>
-
-            <?= htmlspecialchars(
-                $patient['last_name']
-            ) ?>
-
-        </div>
-
-
-        <div class="info-row">
-
-            <strong>
-                Birth Date:
-            </strong>
-
-            <?= htmlspecialchars(
-                $patient['birth_date']
-            ) ?>
-
-        </div>
-
-
-        <div class="info-row">
-
-            <strong>
-                Sex:
-            </strong>
-
-            <?= htmlspecialchars(
-                $patient['sex'] ?? ''
-            ) ?>
-
-        </div>
-
-
-        <div class="info-row">
-
-            <strong>
-                Contact Number:
-            </strong>
-
-            <?= htmlspecialchars(
-                $patient['contact_number']
-            ) ?>
-
-        </div>
-
-
-        <div class="info-row">
-
-            <strong>
-                Address:
-            </strong>
-
-            <?= htmlspecialchars(
-                $patient['address']
-            ) ?>
-
-        </div>
-
-
-        <div class="info-row">
-
-            <strong>
-                Email:
-            </strong>
-
-            <?= htmlspecialchars(
-                $patient['email']
-            ) ?>
-
-        </div>
-
-
-        <a
-            href="patient_edit.php?id=<?= $patient['patient_id'] ?>"
-            class="button"
-        >
-            Edit Patient Information
-        </a>
+        The Tooth Lounge
 
     </div>
 
 
-    <!-- APPOINTMENTS -->
-
-    <div class="section">
-
-        <h2>
-            Appointment History
-        </h2>
+    <nav class="nav">
 
 
-        <?php if (empty($appointments)): ?>
+        <a href="dashboard.php">
 
-            <div class="empty">
+            <i class="fa-solid fa-gauge-high"></i>
 
-                No appointments found.
+            Dashboard
+
+        </a>
+
+
+        <a href="patients.php">
+
+            <i class="fa-solid fa-users"></i>
+
+            Patients
+
+        </a>
+
+
+        <a href="appointments.php">
+
+            <i class="fa-solid fa-calendar-check"></i>
+
+            Appointments
+
+        </a>
+
+
+        <a
+            href="visit_records.php"
+            class="active"
+        >
+
+            <i class="fa-solid fa-file-medical"></i>
+
+            Records
+
+        </a>
+
+
+        <a
+            href="../auth/logout.php"
+            class="logout"
+        >
+
+            <i class="fa-solid fa-right-from-bracket"></i>
+
+            Logout
+
+        </a>
+
+    </nav>
+
+</header>
+
+
+<!-- MAIN -->
+
+<main class="container">
+
+
+    <section class="page-title">
+
+        <h1>
+
+            <i class="fa-solid fa-file-medical"></i>
+
+            Visit Records
+
+        </h1>
+
+        <p>
+            Search and view completed patient visit records.
+        </p>
+
+    </section>
+
+
+    <!-- SEARCH -->
+
+    <div class="search-card">
+
+
+        <form
+            method="GET"
+            class="search-form"
+            id="searchForm"
+        >
+
+
+            <div class="search-input-wrapper">
+
+                <i class="fa-solid fa-magnifying-glass"></i>
+
+                <input
+                    type="text"
+                    name="search"
+                    id="searchInput"
+                    class="search-input"
+                    placeholder="Search patient number, name, or chief complaint"
+                    value="<?= htmlspecialchars($search) ?>"
+                >
 
             </div>
 
-        <?php else: ?>
+
+            <button
+                type="submit"
+                class="search-button"
+            >
+
+                <i class="fa-solid fa-magnifying-glass"></i>
+
+                Search
+
+            </button>
+
+
+            <?php if ($search !== ''): ?>
+
+                <a
+                    href="visit_records.php"
+                    class="clear-button"
+                    id="clearButton"
+                >
+
+                    <i class="fa-solid fa-xmark"></i>
+
+                    Clear
+
+                </a>
+
+            <?php endif; ?>
+
+
+        </form>
+
+
+        <?php if ($search !== ''): ?>
+
+            <div class="search-result">
+
+                Search results for:
+
+                <strong>
+                    <?= htmlspecialchars($search) ?>
+                </strong>
+
+            </div>
+
+        <?php endif; ?>
+
+
+    </div>
+
+
+    <!-- VISIT RECORDS -->
+
+    <?php if (empty($visits)): ?>
+
+
+        <div class="empty">
+
+            <div class="empty-icon">
+
+                <i class="fa-solid fa-file-circle-xmark"></i>
+
+            </div>
+
+
+            <h2>
+                No Visit Records Found
+            </h2>
+
+
+            <p>
+                There are currently no visit records matching your search.
+            </p>
+
+        </div>
+
+
+    <?php else: ?>
+
+
+        <!-- SUMMARY -->
+
+        <div class="summary">
+
+            <div class="summary-icon">
+
+                <i class="fa-solid fa-file-medical"></i>
+
+            </div>
+
+
+            <span>
+                Completed visit records
+            </span>
+
+
+            <span class="count">
+
+                <?= count($visits) ?>
+
+            </span>
+
+        </div>
+
+
+        <!-- TABLE -->
+
+        <div class="table-container">
 
             <table>
+
 
                 <thead>
 
                     <tr>
 
                         <th>
-                            Preferred Date
+                            Visit Date
                         </th>
 
                         <th>
-                            Preferred Time
+                            Patient Number
                         </th>
 
                         <th>
-                            Confirmed Date
+                            Patient Name
                         </th>
 
                         <th>
-                            Confirmed Time
-                        </th>
-
-                        <th>
-                            Reason
-                        </th>
-
-                        <th>
-                            Status
+                            Chief Complaint
                         </th>
 
                         <th>
@@ -385,236 +1146,243 @@ $visits = $stmt->fetchAll();
 
                 </thead>
 
+
                 <tbody>
 
-                    <?php foreach ($appointments as $appointment): ?>
+
+                    <?php foreach ($visits as $visit): ?>
+
 
                         <tr>
 
-                            <td>
-                                <?= htmlspecialchars(
-                                    $appointment['preferred_date']
-                                ) ?>
-                            </td>
 
                             <td>
 
-                                <?= htmlspecialchars(
-                                    $appointment['preferred_start_time']
-                                ) ?>
+                                <div class="visit-date">
 
-                                -
-
-                                <?= htmlspecialchars(
-                                    $appointment['preferred_end_time']
-                                ) ?>
-
-                            </td>
-
-                            <td>
-
-                                <?= htmlspecialchars(
-                                    $appointment['confirmed_date']
-                                    ?? ''
-                                ) ?>
-
-                            </td>
-
-                            <td>
-
-                                <?php if (
-                                    $appointment['confirmed_start_time']
-                                ): ?>
+                                    <i class="fa-regular fa-calendar"></i>
 
                                     <?= htmlspecialchars(
-                                        $appointment['confirmed_start_time']
+                                        $visit['visit_date']
                                     ) ?>
 
-                                    -
+                                </div>
+
+                            </td>
+
+
+                            <td>
+
+                                <span class="patient-number">
 
                                     <?= htmlspecialchars(
-                                        $appointment['confirmed_end_time']
+                                        $visit['patient_number']
                                     ) ?>
 
-                                <?php endif; ?>
+                                </span>
 
                             </td>
+
+
+                            <td>
+
+                                <div class="patient-name">
+
+                                    <div class="patient-icon">
+
+                                        <i class="fa-solid fa-user"></i>
+
+                                    </div>
+
+
+                                    <?= htmlspecialchars(
+                                        $visit['first_name']
+                                        . ' '
+                                        . $visit['last_name']
+                                    ) ?>
+
+                                </div>
+
+                            </td>
+
 
                             <td>
 
                                 <?= htmlspecialchars(
-                                    $appointment['reason']
+                                    $visit['chief_complaint']
+                                    ?: 'Not recorded'
                                 ) ?>
 
                             </td>
 
-                            <td>
-
-                                <?= htmlspecialchars(
-                                    $appointment['status']
-                                ) ?>
-
-                            </td>
 
                             <td>
 
                                 <a
-                                    href="appointment_view.php?id=<?= $appointment['appointment_id'] ?>"
+                                    href="visit_view.php?id=<?= $visit['visit_id'] ?>"
+                                    class="view-button"
                                 >
-                                    Manage
+
+                                    <i class="fa-solid fa-eye"></i>
+
+                                    View Record
+
                                 </a>
 
                             </td>
 
+
                         </tr>
 
+
                     <?php endforeach; ?>
+
 
                 </tbody>
 
             </table>
 
-        <?php endif; ?>
+        </div>
+
+
+    <?php endif; ?>
+
+
+    <!-- BOTTOM NAVIGATION -->
+
+    <div class="bottom-navigation">
+
+
+        <a href="dashboard.php">
+
+            <i class="fa-solid fa-gauge-high"></i>
+
+            Staff Dashboard
+
+        </a>
+
+
+        <a href="patients.php">
+
+            <i class="fa-solid fa-users"></i>
+
+            Patient Records
+
+        </a>
+
+
+        <a href="appointments.php">
+
+            <i class="fa-solid fa-calendar-check"></i>
+
+            Appointments
+
+        </a>
+
 
     </div>
 
 
-    <!-- VISIT HISTORY -->
-
-    <div class="section">
-
-        <h2>
-            Visit History
-        </h2>
+</main>
 
 
-        <?php if (empty($visits)): ?>
+<!-- JAVASCRIPT -->
 
-            <div class="empty">
+<script>
 
-                No visit records found.
+    /*
+    |--------------------------------------------------------------------------
+    | Search Input
+    |--------------------------------------------------------------------------
+    */
 
-            </div>
-
-        <?php else: ?>
-
-            <?php foreach ($visits as $visit): ?>
-
-                <div class="visit">
-
-                    <h3>
-                        Visit Date:
-                        <?= htmlspecialchars(
-                            $visit['visit_date']
-                        ) ?>
-                    </h3>
+    const searchInput =
+        document.getElementById('searchInput');
 
 
-                    <div class="field">
+    /*
+    |--------------------------------------------------------------------------
+    | Automatically focus search box
+    |--------------------------------------------------------------------------
+    */
 
-                        <strong>
-                            Chief Complaint
-                        </strong>
+    if (searchInput) {
 
-                        <?= nl2br(
-                            htmlspecialchars(
-                                $visit['chief_complaint'] ?? ''
-                            )
-                        ) ?: 'No information recorded.' ?>
+        searchInput.focus();
 
-                    </div>
+        const value = searchInput.value;
 
+        searchInput.value = '';
 
-                    <div class="field">
+        searchInput.value = value;
 
-                        <strong>
-                            Findings
-                        </strong>
-
-                        <?= nl2br(
-                            htmlspecialchars(
-                                $visit['findings'] ?? ''
-                            )
-                        ) ?: 'No information recorded.' ?>
-
-                    </div>
+    }
 
 
-                    <div class="field">
+    /*
+    |--------------------------------------------------------------------------
+    | Prevent empty search
+    |--------------------------------------------------------------------------
+    */
 
-                        <strong>
-                            Treatment
-                        </strong>
-
-                        <?= nl2br(
-                            htmlspecialchars(
-                                $visit['treatment'] ?? ''
-                            )
-                        ) ?: 'No information recorded.' ?>
-
-                    </div>
+    const searchForm =
+        document.getElementById('searchForm');
 
 
-                    <div class="field">
+    if (searchForm) {
 
-                        <strong>
-                            Notes
-                        </strong>
+        searchForm.addEventListener(
+            'submit',
+            function (event) {
 
-                        <?= nl2br(
-                            htmlspecialchars(
-                                $visit['notes'] ?? ''
-                            )
-                        ) ?: 'No information recorded.' ?>
-
-                    </div>
+                const value =
+                    searchInput.value.trim();
 
 
-                    <div class="field">
+                if (value === '') {
 
-                        <strong>
-                            Follow-Up
-                        </strong>
+                    event.preventDefault();
 
-                        <?= nl2br(
-                            htmlspecialchars(
-                                $visit['follow_up'] ?? ''
-                            )
-                        ) ?: 'No information recorded.' ?>
+                    window.location.href =
+                        'visit_records.php';
 
-                    </div>
+                }
 
+            }
+        );
 
-                    <a
-                        href="visit_view.php?id=<?= $visit['visit_id'] ?>"
-                    >
-                        View Full Visit Record
-                    </a>
-
-                </div>
-
-            <?php endforeach; ?>
-
-        <?php endif; ?>
-
-    </div>
+    }
 
 
-    <a href="patients.php">
-        Back to Patient Records
-    </a>
+    /*
+    |--------------------------------------------------------------------------
+    | Keyboard shortcut
+    |--------------------------------------------------------------------------
+    |
+    | Press "/" to quickly focus the search box.
+    |
+    */
 
-    <br>
+    document.addEventListener(
+        'keydown',
+        function (event) {
 
-    <a href="dashboard.php">
-        Back to Staff Dashboard
-    </a>
+            if (
+                event.key === '/' &&
+                document.activeElement !== searchInput
+            ) {
 
-    <br>
+                event.preventDefault();
 
-    <a href="../auth/logout.php">
-        Logout
-    </a>
+                searchInput.focus();
+
+            }
+
+        }
+    );
+
+</script>
+
 
 </body>
 

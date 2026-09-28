@@ -83,7 +83,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $confirmed_start_time = $appointment['preferred_start_time'];
         $confirmed_end_time = $appointment['preferred_end_time'];
 
-
         $stmt = $pdo->prepare(
             "SELECT appointment_id
              FROM appointments
@@ -102,7 +101,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         ]);
 
         $conflict = $stmt->fetch();
-
 
         if ($conflict) {
 
@@ -148,7 +146,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $confirmed_start_time = $_POST['confirmed_start_time'] ?? '';
         $confirmed_end_time = $_POST['confirmed_end_time'] ?? '';
 
-
         if (
             empty($confirmed_date) ||
             empty($confirmed_start_time) ||
@@ -183,7 +180,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ]);
 
             $conflict = $stmt->fetch();
-
 
             if ($conflict) {
 
@@ -230,7 +226,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $confirmed_start_time = $_POST['confirmed_start_time'] ?? '';
         $confirmed_end_time = $_POST['confirmed_end_time'] ?? '';
 
-
         if (
             empty($confirmed_date) ||
             empty($confirmed_start_time) ||
@@ -265,7 +260,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ]);
 
             $conflict = $stmt->fetch();
-
 
             if ($conflict) {
 
@@ -344,20 +338,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             try {
 
-                /*
-                |--------------------------------------------------------------------------
-                | Start Transaction
-                |--------------------------------------------------------------------------
-                */
-
                 $pdo->beginTransaction();
-
-
-                /*
-                |--------------------------------------------------------------------------
-                | Mark Appointment as Completed
-                |--------------------------------------------------------------------------
-                */
 
                 $stmt = $pdo->prepare(
                     "UPDATE appointments
@@ -370,7 +351,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 /*
                 |--------------------------------------------------------------------------
-                | Automatically Create Visit Record
+                | Create Visit Record Automatically
                 |--------------------------------------------------------------------------
                 */
 
@@ -383,7 +364,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $checkVisit->execute([$appointment_id]);
 
                 $existingVisit = $checkVisit->fetch();
-
 
                 if (!$existingVisit) {
 
@@ -409,13 +389,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $visit_date
                     ]);
                 }
-
-
-                /*
-                |--------------------------------------------------------------------------
-                | Commit Transaction
-                |--------------------------------------------------------------------------
-                */
 
                 $pdo->commit();
 
@@ -468,6 +441,51 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
+
+/*
+|--------------------------------------------------------------------------
+| Get Visit Record
+|--------------------------------------------------------------------------
+*/
+
+$existingVisit = null;
+
+if ($appointment['status'] === 'completed') {
+
+    $visitStmt = $pdo->prepare(
+        "SELECT visit_id
+         FROM visit_records
+         WHERE appointment_id = ?"
+    );
+
+    $visitStmt->execute([
+        $appointment['appointment_id']
+    ]);
+
+    $existingVisit = $visitStmt->fetch();
+}
+
+
+/*
+|--------------------------------------------------------------------------
+| Helper Functions
+|--------------------------------------------------------------------------
+*/
+
+function formatTime(?string $time): string
+{
+    if (!$time) {
+        return 'Not set';
+    }
+
+    return date('g:i A', strtotime($time));
+}
+
+function formatStatus(string $status): string
+{
+    return ucfirst(str_replace('_', ' ', $status));
+}
+
 ?>
 
 <!DOCTYPE html>
@@ -484,114 +502,741 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     <title>Manage Appointment - The Tooth Lounge</title>
 
+    <link
+        rel="stylesheet"
+        href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"
+    >
+
     <style>
 
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
         body {
-            font-family: Arial, sans-serif;
-            max-width: 750px;
-            margin: 40px auto;
-            padding: 20px;
+            min-height: 100vh;
+
+            font-family:
+                Arial,
+                Helvetica,
+                sans-serif;
+
+            color: #333;
+
+            background:
+                linear-gradient(
+                    rgba(0, 135, 155, 0.78),
+                    rgba(20, 85, 150, 0.78)
+                ),
+                url("https://images.unsplash.com/photo-1606811971618-4486d14f3f99?auto=format&fit=crop&w=1920&q=80");
+
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
         }
 
-        h1 {
-            margin-bottom: 20px;
+
+        /* =========================================================
+           HEADER
+        ========================================================= */
+
+        .header {
+            min-height: 75px;
+
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+
+            padding: 12px 35px;
+
+            background: rgba(255, 255, 255, 0.96);
+
+            box-shadow:
+                0 3px 15px rgba(0, 0, 0, 0.15);
         }
 
-        .section {
-            border: 1px solid #ccc;
-            padding: 20px;
-            margin-top: 20px;
-            border-radius: 8px;
-        }
 
-        label {
-            display: block;
-            margin-top: 15px;
+        .logo {
+            display: flex;
+            align-items: center;
+
+            gap: 12px;
+
+            color: #167b8c;
+
+            font-size: 21px;
             font-weight: bold;
         }
 
-        .button {
-            display: inline-block;
-            padding: 12px 20px;
-            margin-top: 15px;
-            background: #333;
-            color: white;
+        .logo-icon {
+            width: 43px;
+            height: 43px;
+
+            display: flex;
+            align-items: center;
+            justify-content: center;
+
+            background: #e6f7fa;
+
+            border-radius: 50%;
+
+            color: #167b8c;
+
+            font-size: 21px;
+        }
+
+
+        /* =========================================================
+           NAVIGATION
+        ========================================================= */
+
+        .nav {
+            display: flex;
+            align-items: center;
+
+            gap: 5px;
+        }
+
+        .nav a {
+            display: flex;
+            align-items: center;
+
+            gap: 7px;
+
+            padding: 10px 13px;
+
+            border-radius: 8px;
+
+            color: #555;
+
             text-decoration: none;
-            border-radius: 5px;
+
+            font-size: 14px;
+        }
+
+        .logout {
+            background: #167b8c;
+
+            color: white !important;
+
+            margin-left: 5px;
+        }
+
+
+        /* =========================================================
+           MAIN
+        ========================================================= */
+
+        .container {
+            width: 1100px;
+            max-width: 92%;
+
+            margin: 40px auto;
+        }
+
+
+        /* =========================================================
+           PAGE TITLE
+        ========================================================= */
+
+        .welcome {
+            margin-bottom: 25px;
+
+            color: white;
+        }
+
+        .welcome h1 {
+            font-size: 32px;
+            font-weight: 600;
+
+            margin-bottom: 8px;
+        }
+
+        .welcome p {
+            font-size: 16px;
+
+            opacity: 0.9;
+        }
+
+        .appointment-number {
+            display: inline-flex;
+
+            align-items: center;
+
+            gap: 7px;
+
+            margin-top: 10px;
+
+            padding: 7px 12px;
+
+            background: rgba(255, 255, 255, 0.18);
+
+            border:
+                1px solid
+                rgba(255, 255, 255, 0.3);
+
+            border-radius: 20px;
+
+            font-size: 13px;
+        }
+
+
+        /* =========================================================
+           MESSAGE
+        ========================================================= */
+
+        .message {
+            display: flex;
+
+            align-items: center;
+
+            gap: 9px;
+
+            padding: 13px 16px;
+
+            margin-bottom: 20px;
+
+            border-radius: 9px;
+
+            font-size: 14px;
+        }
+
+        .success {
+            background: #e8f8f0;
+
+            border: 1px solid #b8e8d0;
+
+            color: #287a53;
+        }
+
+        .error {
+            background: #fdecec;
+
+            border: 1px solid #f0bcbc;
+
+            color: #a33a3a;
+        }
+
+
+        /* =========================================================
+           SECTION
+        ========================================================= */
+
+        .section {
+            padding: 30px;
+
+            margin-bottom: 20px;
+
+            background: rgba(255, 255, 255, 0.96);
+
+            border-radius: 15px;
+
+            box-shadow:
+                0 10px 30px rgba(0, 0, 0, 0.15);
+        }
+
+
+        .section-header {
+            display: flex;
+
+            align-items: center;
+
+            gap: 15px;
+
+            margin-bottom: 22px;
+        }
+
+        .section-icon {
+            width: 50px;
+            height: 50px;
+
+            display: flex;
+
+            align-items: center;
+            justify-content: center;
+
+            background: #e6f7fa;
+
+            color: #167b8c;
+
+            border-radius: 12px;
+
+            font-size: 21px;
+
+            flex-shrink: 0;
+        }
+
+        .section-header h2 {
+            color: #167b8c;
+
+            font-size: 21px;
+        }
+
+        .section-header p {
+            margin-top: 5px;
+
+            color: #777;
+
+            font-size: 13px;
+        }
+
+
+        /* =========================================================
+           INFORMATION GRID
+        ========================================================= */
+
+        .info-grid {
+            display: grid;
+
+            grid-template-columns:
+                repeat(3, 1fr);
+
+            gap: 15px;
+        }
+
+        .info-box {
+            padding: 16px;
+
+            background: #f8fbfc;
+
+            border: 1px solid #e0e8ea;
+
+            border-radius: 10px;
+        }
+
+        .info-label {
+            margin-bottom: 6px;
+
+            color: #777;
+
+            font-size: 12px;
+
+            font-weight: 600;
+        }
+
+        .info-label i {
+            margin-right: 5px;
+
+            color: #167b8c;
+        }
+
+        .info-value {
+            color: #444;
+
+            font-size: 14px;
+
+            line-height: 1.4;
+        }
+
+
+        /* =========================================================
+           REQUEST GRID
+        ========================================================= */
+
+        .request-grid {
+            display: grid;
+
+            grid-template-columns:
+                repeat(2, 1fr);
+
+            gap: 15px;
+        }
+
+        .request-box {
+            padding: 18px;
+
+            background: #f8fbfc;
+
+            border: 1px solid #e0e8ea;
+
+            border-radius: 10px;
+        }
+
+        .request-box strong {
+            display: block;
+
+            margin-bottom: 7px;
+
+            color: #167b8c;
+
+            font-size: 13px;
+        }
+
+        .request-box strong i {
+            margin-right: 6px;
+        }
+
+        .request-box span {
+            color: #555;
+
+            font-size: 14px;
+
+            line-height: 1.5;
+        }
+
+
+        /* =========================================================
+           STATUS
+        ========================================================= */
+
+        .status {
+            display: inline-flex !important;
+
+            align-items: center;
+
+            gap: 6px;
+
+            padding: 6px 11px;
+
+            background: #e6f7fa;
+
+            color: #167b8c !important;
+
+            border-radius: 20px;
+
+            font-size: 12px !important;
+
+            font-weight: bold;
+        }
+
+
+        /* =========================================================
+           FORM
+        ========================================================= */
+
+        .form-grid {
+            display: grid;
+
+            grid-template-columns:
+                repeat(3, 1fr);
+
+            gap: 16px;
+        }
+
+        .form-group {
+            display: flex;
+
+            flex-direction: column;
+        }
+
+        .form-group label {
+            margin-bottom: 7px;
+
+            color: #555;
+
+            font-size: 13px;
+
+            font-weight: 600;
+        }
+
+        .form-group label i {
+            margin-right: 5px;
+
+            color: #167b8c;
         }
 
         input {
             width: 100%;
-            padding: 10px;
-            margin-top: 5px;
-            box-sizing: border-box;
+
+            padding: 11px 12px;
+
+            border: 1px solid #d5d5d5;
+
+            border-radius: 8px;
+
+            background: white;
+
+            color: #333;
+
+            font-family: Arial, sans-serif;
+
+            font-size: 14px;
+
+            outline: none;
         }
 
-        button {
-            padding: 12px 20px;
+
+        /* =========================================================
+           BUTTONS
+        ========================================================= */
+
+        .button-row {
+            display: flex;
+
+            flex-wrap: wrap;
+
+            gap: 10px;
+
             margin-top: 20px;
-            cursor: pointer;
+        }
+
+        button,
+        .button {
+            display: inline-flex;
+
+            align-items: center;
+            justify-content: center;
+
+            gap: 7px;
+
+            padding: 9px 14px;
+
             border: none;
-            border-radius: 5px;
+
+            border-radius: 8px;
+
+            text-decoration: none;
+
+            font-family: Arial, sans-serif;
+
+            font-size: 13px;
+
+            font-weight: 500;
+
+            cursor: pointer;
         }
 
         .accept-button {
-            background: #2e7d32;
+            background: #167b8c;
+
             color: white;
-            width: 100%;
         }
 
         .confirm-button {
-            background: #333;
+            background: #167b8c;
+
             color: white;
-            width: 100%;
         }
 
         .reschedule-button {
-            background: #555;
+            background: #167b8c;
+
             color: white;
-            width: 100%;
         }
 
         .complete-button {
-            background: #2e7d32;
+            background: #287a53;
+
             color: white;
-            width: 100%;
         }
 
         .no-show-button {
             background: #777;
+
             color: white;
-            width: 100%;
         }
 
         .cancel-button {
             background: #b00020;
+
             color: white;
-            width: 100%;
         }
 
-        .message {
-            padding: 12px;
-            margin-top: 15px;
-            border-radius: 5px;
+        .button {
+            background: #167b8c;
+
+            color: white;
         }
 
-        .success {
-            background: #dff0d8;
+        .secondary-button {
+            background: #eef3f4;
+
+            color: #555;
         }
 
-        .error {
-            background: #f2dede;
+
+        /* =========================================================
+           CONFIRMED SCHEDULE
+        ========================================================= */
+
+        .schedule-box {
+            display: grid;
+
+            grid-template-columns:
+                repeat(2, 1fr);
+
+            gap: 15px;
         }
 
-        .status {
-            font-weight: bold;
+        .schedule-item {
+            padding: 18px;
+
+            background: #f1fbfc;
+
+            border: 1px solid #d7eef1;
+
+            border-radius: 10px;
         }
 
-        a {
-            display: inline-block;
-            margin-top: 15px;
+        .schedule-item span {
+            display: block;
+
+            margin-bottom: 6px;
+
+            color: #777;
+
+            font-size: 12px;
+        }
+
+        .schedule-item span i {
+            margin-right: 7px;
+
+            color: #167b8c;
+        }
+
+        .schedule-item strong {
+            color: #167b8c;
+
+            font-size: 15px;
+        }
+
+
+        /* =========================================================
+           VISIT RECORD MESSAGE
+        ========================================================= */
+
+        .record-message {
+            color: #777;
+
+            font-size: 14px;
+
+            margin-bottom: 15px;
+        }
+
+        .record-message i {
+            color: #287a53;
+
+            margin-right: 5px;
+        }
+
+
+        /* =========================================================
+           BOTTOM ACTIONS
+        ========================================================= */
+
+        .bottom-actions {
+            display: flex;
+
+            flex-wrap: wrap;
+
+            gap: 10px;
+
+            margin-top: 25px;
+
+            padding-top: 20px;
+        }
+
+        .bottom-actions a {
+            display: inline-flex;
+
+            align-items: center;
+
+            gap: 7px;
+
+            padding: 9px 14px;
+
+            background: rgba(255, 255, 255, 0.95);
+
+            color: #555;
+
+            border-radius: 8px;
+
+            text-decoration: none;
+
+            font-size: 13px;
+        }
+
+        .bottom-actions a i {
+            color: #167b8c;
+        }
+
+
+        /* =========================================================
+           TABLET
+        ========================================================= */
+
+        @media (max-width: 950px) {
+
+            .header {
+                padding: 12px 20px;
+            }
+
+            .info-grid {
+                grid-template-columns:
+                    repeat(2, 1fr);
+            }
+
+            .form-grid {
+                grid-template-columns:
+                    1fr;
+            }
+
+            .schedule-box {
+                grid-template-columns:
+                    1fr;
+            }
+        }
+
+
+        /* =========================================================
+           MOBILE
+        ========================================================= */
+
+        @media (max-width: 650px) {
+
+            .header {
+                flex-direction: column;
+
+                gap: 15px;
+
+                padding: 15px;
+            }
+
+            .nav {
+                flex-wrap: wrap;
+
+                justify-content: center;
+            }
+
+            .container {
+                max-width: 94%;
+
+                margin: 25px auto;
+            }
+
+            .welcome h1 {
+                font-size: 26px;
+            }
+
+            .section {
+                padding: 20px;
+            }
+
+            .info-grid,
+            .request-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .button-row {
+                flex-direction: column;
+            }
+
+            .button-row button,
+            .button-row .button {
+                width: 100%;
+            }
+
+            .bottom-actions {
+                flex-direction: column;
+            }
+
+            .bottom-actions a {
+                width: 100%;
+
+                justify-content: center;
+            }
         }
 
     </style>
@@ -600,12 +1245,103 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 <body>
 
-    <h1>Manage Appointment</h1>
 
+<!-- =========================================================
+     HEADER
+========================================================= -->
+
+<header class="header">
+
+    <div class="logo">
+
+        <div class="logo-icon">
+            <i class="fa-solid fa-tooth"></i>
+        </div>
+
+        The Tooth Lounge
+
+    </div>
+
+
+    <nav class="nav">
+
+        <a href="dashboard.php">
+            <i class="fa-solid fa-gauge-high"></i>
+            Dashboard
+        </a>
+
+        <a href="patients.php">
+            <i class="fa-solid fa-users"></i>
+            Patients
+        </a>
+
+        <a href="appointments.php">
+            <i class="fa-solid fa-calendar-check"></i>
+            Appointments
+        </a>
+
+        <a href="visit_records.php">
+            <i class="fa-solid fa-file-medical"></i>
+            Records
+        </a>
+
+        <a
+            href="../auth/logout.php"
+            class="logout"
+        >
+            <i class="fa-solid fa-right-from-bracket"></i>
+            Logout
+        </a>
+
+    </nav>
+
+</header>
+
+
+<!-- =========================================================
+     MAIN
+========================================================= -->
+
+<main class="container">
+
+
+    <!-- PAGE TITLE -->
+
+    <section class="welcome">
+
+        <h1>
+            Manage Appointment
+        </h1>
+
+        <p>
+            Review and manage this patient's appointment.
+        </p>
+
+        <span class="appointment-number">
+
+            <i class="fa-solid fa-calendar-check"></i>
+
+            Appointment #
+            <?= htmlspecialchars(
+                $appointment['appointment_id']
+            ) ?>
+
+        </span>
+
+    </section>
+
+
+    <!-- MESSAGE -->
 
     <?php if ($message): ?>
 
         <div class="message <?= htmlspecialchars($message_type) ?>">
+
+            <i class="fa-solid
+                <?= $message_type === 'success'
+                    ? 'fa-circle-check'
+                    : 'fa-circle-exclamation'
+                ?>"></i>
 
             <?= htmlspecialchars($message) ?>
 
@@ -614,121 +1350,247 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <?php endif; ?>
 
 
-    <!-- PATIENT INFORMATION -->
+    <!-- =====================================================
+         PATIENT INFORMATION
+    ====================================================== -->
 
-    <div class="section">
+    <section class="section">
 
-        <h2>Patient Information</h2>
+        <div class="section-header">
 
-        <p>
-            <strong>Name:</strong>
+            <div class="section-icon">
+                <i class="fa-solid fa-user"></i>
+            </div>
 
-            <?= htmlspecialchars(
-                $appointment['first_name']
-                . ' '
-                . $appointment['last_name']
-            ) ?>
-        </p>
+            <div>
 
-        <p>
-            <strong>Patient Number:</strong>
+                <h2>
+                    Patient Information
+                </h2>
 
-            <?= htmlspecialchars(
-                $appointment['patient_number']
-            ) ?>
-        </p>
+                <p>
+                    Patient details associated with this appointment.
+                </p>
 
-        <p>
-            <strong>Contact:</strong>
+            </div>
 
-            <?= htmlspecialchars(
-                $appointment['contact_number'] ?? ''
-            ) ?>
-        </p>
-
-    </div>
+        </div>
 
 
-    <!-- PATIENT REQUEST -->
+        <div class="info-grid">
 
-    <div class="section">
+            <div class="info-box">
 
-        <h2>Patient Request</h2>
+                <div class="info-label">
 
-        <p>
-            <strong>Preferred Date:</strong>
+                    <i class="fa-solid fa-user"></i>
 
-            <?= htmlspecialchars(
-                $appointment['preferred_date']
-            ) ?>
-        </p>
+                    Patient Name
 
-        <p>
-            <strong>Preferred Time:</strong>
+                </div>
 
-            <?= htmlspecialchars(
-                date(
-                    'g:i A',
-                    strtotime(
-                        $appointment['preferred_start_time']
-                    )
-                )
-            ) ?>
+                <div class="info-value">
 
-            -
+                    <?= htmlspecialchars(
+                        $appointment['first_name']
+                        . ' '
+                        . $appointment['last_name']
+                    ) ?>
 
-            <?= htmlspecialchars(
-                date(
-                    'g:i A',
-                    strtotime(
-                        $appointment['preferred_end_time']
-                    )
-                )
-            ) ?>
-        </p>
+                </div>
 
-        <p>
-            <strong>Reason:</strong>
+            </div>
 
-            <?= htmlspecialchars(
-                $appointment['reason'] ?? ''
-            ) ?>
-        </p>
 
-        <p>
-            <strong>Status:</strong>
+            <div class="info-box">
 
-            <span class="status">
+                <div class="info-label">
 
-                <?= htmlspecialchars(
-                    ucfirst(
-                        str_replace(
-                            '_',
-                            ' ',
+                    <i class="fa-solid fa-id-card"></i>
+
+                    Patient Number
+
+                </div>
+
+                <div class="info-value">
+
+                    <?= htmlspecialchars(
+                        $appointment['patient_number']
+                    ) ?>
+
+                </div>
+
+            </div>
+
+
+            <div class="info-box">
+
+                <div class="info-label">
+
+                    <i class="fa-solid fa-phone"></i>
+
+                    Contact Number
+
+                </div>
+
+                <div class="info-value">
+
+                    <?= htmlspecialchars(
+                        $appointment['contact_number'] ?? 'Not provided'
+                    ) ?>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </section>
+
+
+    <!-- =====================================================
+         PATIENT REQUEST
+    ====================================================== -->
+
+    <section class="section">
+
+        <div class="section-header">
+
+            <div class="section-icon">
+                <i class="fa-solid fa-calendar-check"></i>
+            </div>
+
+            <div>
+
+                <h2>
+                    Patient Request
+                </h2>
+
+                <p>
+                    Requested appointment schedule and reason.
+                </p>
+
+            </div>
+
+        </div>
+
+
+        <div class="request-grid">
+
+            <div class="request-box">
+
+                <strong>
+                    <i class="fa-solid fa-calendar-day"></i>
+                    Preferred Date
+                </strong>
+
+                <span>
+                    <?= htmlspecialchars(
+                        $appointment['preferred_date']
+                    ) ?>
+                </span>
+
+            </div>
+
+
+            <div class="request-box">
+
+                <strong>
+                    <i class="fa-solid fa-clock"></i>
+                    Preferred Time
+                </strong>
+
+                <span>
+
+                    <?= htmlspecialchars(
+                        formatTime(
+                            $appointment['preferred_start_time']
+                        )
+                    ) ?>
+
+                    -
+
+                    <?= htmlspecialchars(
+                        formatTime(
+                            $appointment['preferred_end_time']
+                        )
+                    ) ?>
+
+                </span>
+
+            </div>
+
+
+            <div class="request-box">
+
+                <strong>
+                    <i class="fa-solid fa-comment-medical"></i>
+                    Reason
+                </strong>
+
+                <span>
+                    <?= htmlspecialchars(
+                        $appointment['reason'] ?? 'Not provided'
+                    ) ?>
+                </span>
+
+            </div>
+
+
+            <div class="request-box">
+
+                <strong>
+                    <i class="fa-solid fa-circle-info"></i>
+                    Current Status
+                </strong>
+
+                <span class="status">
+
+                    <i class="fa-solid fa-circle"></i>
+
+                    <?= htmlspecialchars(
+                        formatStatus(
                             $appointment['status']
                         )
-                    )
-                ) ?>
+                    ) ?>
 
-            </span>
+                </span>
 
-        </p>
+            </div>
 
-    </div>
+        </div>
+
+    </section>
 
 
-    <!-- ACCEPT APPOINTMENT -->
+    <!-- =====================================================
+         ACCEPT APPOINTMENT
+    ====================================================== -->
 
     <?php if ($appointment['status'] === 'pending'): ?>
 
-        <div class="section">
+        <section class="section">
 
-            <h2>Accept Appointment</h2>
+            <div class="section-header">
 
-            <p>
-                The patient requested the date and time shown above.
-                If the schedule is available, the staff can accept the request directly.
-            </p>
+                <div class="section-icon">
+                    <i class="fa-solid fa-check"></i>
+                </div>
+
+                <div>
+
+                    <h2>
+                        Accept Appointment
+                    </h2>
+
+                    <p>
+                        Accept the patient's requested date and time.
+                    </p>
+
+                </div>
+
+            </div>
+
 
             <form
                 method="POST"
@@ -741,277 +1603,440 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     value="accept"
                     class="accept-button"
                 >
+
+                    <i class="fa-solid fa-check"></i>
+
                     Accept Appointment
+
                 </button>
 
             </form>
 
-        </div>
+        </section>
 
     <?php endif; ?>
 
 
-    <!-- CUSTOM SCHEDULE / RESCHEDULE -->
+    <!-- =====================================================
+         CUSTOM SCHEDULE / RESCHEDULE
+    ====================================================== -->
 
     <?php if (
         $appointment['status'] === 'pending' ||
         $appointment['status'] === 'confirmed'
     ): ?>
 
-        <div class="section">
+        <section class="section">
 
-            <?php if ($appointment['status'] === 'pending'): ?>
+            <div class="section-header">
 
-                <h2>Configure Custom Schedule</h2>
+                <div class="section-icon">
+                    <i class="fa-solid fa-calendar-days"></i>
+                </div>
 
-                <p>
-                    Use this option if the patient's requested schedule
-                    is not suitable and the staff needs to set another time.
-                </p>
+                <div>
 
-            <?php else: ?>
+                    <?php if ($appointment['status'] === 'pending'): ?>
 
-                <h2>Reschedule Appointment</h2>
+                        <h2>
+                            Configure Custom Schedule
+                        </h2>
 
-                <p>
-                    Change the confirmed date or time if necessary.
-                </p>
+                        <p>
+                            Set a different schedule for the patient.
+                        </p>
 
-            <?php endif; ?>
+                    <?php else: ?>
+
+                        <h2>
+                            Reschedule Appointment
+                        </h2>
+
+                        <p>
+                            Change the confirmed appointment schedule.
+                        </p>
+
+                    <?php endif; ?>
+
+                </div>
+
+            </div>
 
 
             <form method="POST">
 
-                <label for="confirmed_date">
-                    Confirmed Date
-                </label>
+                <div class="form-grid">
 
-                <input
-                    type="date"
-                    id="confirmed_date"
-                    name="confirmed_date"
-                    value="<?= htmlspecialchars(
-                        $appointment['confirmed_date']
-                        ?? $appointment['preferred_date']
-                    ) ?>"
-                    required
-                >
+                    <div class="form-group">
 
+                        <label for="confirmed_date">
 
-                <label for="confirmed_start_time">
-                    Confirmed Start Time
-                </label>
+                            <i class="fa-solid fa-calendar"></i>
 
-                <input
-                    type="time"
-                    id="confirmed_start_time"
-                    name="confirmed_start_time"
-                    value="<?= htmlspecialchars(
-                        $appointment['confirmed_start_time']
-                        ?? $appointment['preferred_start_time']
-                    ) ?>"
-                    required
-                >
+                            Confirmed Date
+
+                        </label>
+
+                        <input
+                            type="date"
+                            id="confirmed_date"
+                            name="confirmed_date"
+                            value="<?= htmlspecialchars(
+                                $appointment['confirmed_date']
+                                ?? $appointment['preferred_date']
+                            ) ?>"
+                            required
+                        >
+
+                    </div>
 
 
-                <label for="confirmed_end_time">
-                    Confirmed End Time
-                </label>
+                    <div class="form-group">
 
-                <input
-                    type="time"
-                    id="confirmed_end_time"
-                    name="confirmed_end_time"
-                    value="<?= htmlspecialchars(
-                        $appointment['confirmed_end_time']
-                        ?? $appointment['preferred_end_time']
-                    ) ?>"
-                    required
-                >
+                        <label for="confirmed_start_time">
+
+                            <i class="fa-solid fa-clock"></i>
+
+                            Start Time
+
+                        </label>
+
+                        <input
+                            type="time"
+                            id="confirmed_start_time"
+                            name="confirmed_start_time"
+                            value="<?= htmlspecialchars(
+                                $appointment['confirmed_start_time']
+                                ?? $appointment['preferred_start_time']
+                            ) ?>"
+                            required
+                        >
+
+                    </div>
 
 
-                <?php if ($appointment['status'] === 'pending'): ?>
+                    <div class="form-group">
 
-                    <button
-                        type="submit"
-                        name="action"
-                        value="confirm"
-                        class="confirm-button"
-                    >
-                        Confirm Custom Schedule
-                    </button>
+                        <label for="confirmed_end_time">
 
-                <?php else: ?>
+                            <i class="fa-solid fa-clock"></i>
 
-                    <button
-                        type="submit"
-                        name="action"
-                        value="reschedule"
-                        class="reschedule-button"
-                    >
-                        Reschedule Appointment
-                    </button>
+                            End Time
 
-                <?php endif; ?>
+                        </label>
+
+                        <input
+                            type="time"
+                            id="confirmed_end_time"
+                            name="confirmed_end_time"
+                            value="<?= htmlspecialchars(
+                                $appointment['confirmed_end_time']
+                                ?? $appointment['preferred_end_time']
+                            ) ?>"
+                            required
+                        >
+
+                    </div>
+
+                </div>
+
+
+                <div class="button-row">
+
+                    <?php if ($appointment['status'] === 'pending'): ?>
+
+                        <button
+                            type="submit"
+                            name="action"
+                            value="confirm"
+                            class="confirm-button"
+                        >
+
+                            <i class="fa-solid fa-check"></i>
+
+                            Confirm Custom Schedule
+
+                        </button>
+
+                    <?php else: ?>
+
+                        <button
+                            type="submit"
+                            name="action"
+                            value="reschedule"
+                            class="reschedule-button"
+                        >
+
+                            <i class="fa-solid fa-calendar-days"></i>
+
+                            Reschedule Appointment
+
+                        </button>
+
+                    <?php endif; ?>
+
+                </div>
 
             </form>
 
-        </div>
+        </section>
 
     <?php endif; ?>
 
 
-    <!-- CONFIRMED SCHEDULE -->
+    <!-- =====================================================
+         CONFIRMED SCHEDULE
+    ====================================================== -->
 
-    <?php if ($appointment['confirmed_date']): ?>
+    <?php if (!empty($appointment['confirmed_date'])): ?>
 
-        <div class="section">
+        <section class="section">
 
-            <h2>Confirmed Schedule</h2>
+            <div class="section-header">
 
-            <p>
-                <strong>Date:</strong>
+                <div class="section-icon">
+                    <i class="fa-solid fa-calendar-check"></i>
+                </div>
 
-                <?= htmlspecialchars(
-                    $appointment['confirmed_date']
-                ) ?>
-            </p>
+                <div>
 
-            <p>
-                <strong>Time:</strong>
+                    <h2>
+                        Confirmed Schedule
+                    </h2>
 
-                <?= htmlspecialchars(
-                    date(
-                        'g:i A',
-                        strtotime(
-                            $appointment['confirmed_start_time']
-                        )
-                    )
-                ) ?>
+                    <p>
+                        Current confirmed appointment schedule.
+                    </p>
 
-                -
+                </div>
 
-                <?= htmlspecialchars(
-                    date(
-                        'g:i A',
-                        strtotime(
-                            $appointment['confirmed_end_time']
-                        )
-                    )
-                ) ?>
+            </div>
 
-            </p>
 
-        </div>
+            <div class="schedule-box">
+
+                <div class="schedule-item">
+
+                    <span>
+
+                        <i class="fa-solid fa-calendar"></i>
+
+                        Date
+
+                    </span>
+
+                    <strong>
+
+                        <?= htmlspecialchars(
+                            $appointment['confirmed_date']
+                        ) ?>
+
+                    </strong>
+
+                </div>
+
+
+                <div class="schedule-item">
+
+                    <span>
+
+                        <i class="fa-solid fa-clock"></i>
+
+                        Time
+
+                    </span>
+
+                    <strong>
+
+                        <?= htmlspecialchars(
+                            formatTime(
+                                $appointment['confirmed_start_time']
+                            )
+                        ) ?>
+
+                        -
+
+                        <?= htmlspecialchars(
+                            formatTime(
+                                $appointment['confirmed_end_time']
+                            )
+                        ) ?>
+
+                    </strong>
+
+                </div>
+
+            </div>
+
+        </section>
 
     <?php endif; ?>
 
 
-    <!-- COMPLETED / NO-SHOW -->
+    <!-- =====================================================
+         APPOINTMENT STATUS
+    ====================================================== -->
 
     <?php if ($appointment['status'] === 'confirmed'): ?>
 
-        <div class="section">
+        <section class="section">
 
-            <h2>Appointment Status</h2>
+            <div class="section-header">
 
-            <form
-                method="POST"
-                onsubmit="return confirm('Mark this appointment as completed? A visit record will be created automatically.');"
-            >
+                <div class="section-icon">
+                    <i class="fa-solid fa-clipboard-check"></i>
+                </div>
 
-                <button
-                    type="submit"
-                    name="action"
-                    value="completed"
-                    class="complete-button"
+                <div>
+
+                    <h2>
+                        Appointment Status
+                    </h2>
+
+                    <p>
+                        Update the appointment after the scheduled visit.
+                    </p>
+
+                </div>
+
+            </div>
+
+
+            <div class="button-row">
+
+                <form
+                    method="POST"
+                    onsubmit="return confirm('Mark this appointment as completed? A visit record will be created automatically.');"
                 >
-                    Mark as Completed
-                </button>
 
-            </form>
+                    <button
+                        type="submit"
+                        name="action"
+                        value="completed"
+                        class="complete-button"
+                    >
+
+                        <i class="fa-solid fa-circle-check"></i>
+
+                        Mark as Completed
+
+                    </button>
+
+                </form>
 
 
-            <form
-                method="POST"
-                onsubmit="return confirm('Mark this appointment as no-show?');"
-            >
-
-                <button
-                    type="submit"
-                    name="action"
-                    value="no_show"
-                    class="no-show-button"
+                <form
+                    method="POST"
+                    onsubmit="return confirm('Mark this appointment as no-show?');"
                 >
-                    Mark as No-Show
-                </button>
 
-            </form>
+                    <button
+                        type="submit"
+                        name="action"
+                        value="no_show"
+                        class="no-show-button"
+                    >
 
-        </div>
+                        <i class="fa-solid fa-user-xmark"></i>
+
+                        Mark as No-Show
+
+                    </button>
+
+                </form>
+
+            </div>
+
+        </section>
 
     <?php endif; ?>
 
 
-    <!-- VISIT RECORD -->
+    <!-- =====================================================
+         VISIT RECORD
+    ====================================================== -->
 
     <?php if ($appointment['status'] === 'completed'): ?>
 
-        <div class="section">
+        <section class="section">
 
-            <h2>Visit Record</h2>
+            <div class="section-header">
 
-            <?php
+                <div class="section-icon">
+                    <i class="fa-solid fa-file-medical"></i>
+                </div>
 
-            $visitStmt = $pdo->prepare(
-                "SELECT visit_id
-                 FROM visit_records
-                 WHERE appointment_id = ?"
-            );
+                <div>
 
-            $visitStmt->execute([
-                $appointment['appointment_id']
-            ]);
+                    <h2>
+                        Visit Record
+                    </h2>
 
-            $existingVisit = $visitStmt->fetch();
+                    <p>
+                        Visit record associated with this appointment.
+                    </p>
 
-            ?>
+                </div>
+
+            </div>
 
 
             <?php if ($existingVisit): ?>
 
-                <p>
+                <p class="record-message">
+
+                    <i class="fa-solid fa-circle-check"></i>
+
                     A visit record has been created for this completed appointment.
+
                 </p>
 
-                <a
-                    href="visit_view.php?id=<?= $existingVisit['visit_id'] ?>"
-                    class="button"
-                >
-                    View Visit Record
-                </a>
 
-                <a
-                    href="visit_edit.php?id=<?= $existingVisit['visit_id'] ?>"
-                    class="button"
-                >
-                    Edit Visit Record
-                </a>
+                <div class="button-row">
+
+                    <a
+                        href="visit_view.php?id=<?= htmlspecialchars($existingVisit['visit_id']) ?>"
+                        class="button"
+                    >
+
+                        <i class="fa-solid fa-eye"></i>
+
+                        View Visit Record
+
+                    </a>
+
+
+                    <a
+                        href="visit_edit.php?id=<?= htmlspecialchars($existingVisit['visit_id']) ?>"
+                        class="button"
+                    >
+
+                        <i class="fa-solid fa-pen-to-square"></i>
+
+                        Edit Visit Record
+
+                    </a>
+
+                </div>
 
             <?php else: ?>
 
-                <p>
+                <p class="record-message">
+
                     No visit record is associated with this appointment.
+
                 </p>
 
             <?php endif; ?>
 
-        </div>
+        </section>
 
     <?php endif; ?>
 
 
-    <!-- CANCEL -->
+    <!-- =====================================================
+         CANCEL APPOINTMENT
+    ====================================================== -->
 
     <?php if (
         $appointment['status'] !== 'cancelled' &&
@@ -1019,14 +2044,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $appointment['status'] !== 'no_show'
     ): ?>
 
-        <div class="section">
+        <section class="section">
 
-            <h2>Cancel Appointment</h2>
+            <div class="section-header">
 
-            <p>
-                Cancelling this appointment will change its status
-                to cancelled.
-            </p>
+                <div class="section-icon">
+                    <i class="fa-solid fa-ban"></i>
+                </div>
+
+                <div>
+
+                    <h2>
+                        Cancel Appointment
+                    </h2>
+
+                    <p>
+                        Cancel this appointment if it is no longer needed.
+                    </p>
+
+                </div>
+
+            </div>
+
 
             <form
                 method="POST"
@@ -1039,31 +2078,56 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     value="cancel"
                     class="cancel-button"
                 >
+
+                    <i class="fa-solid fa-xmark"></i>
+
                     Cancel Appointment
+
                 </button>
 
             </form>
 
-        </div>
+        </section>
 
     <?php endif; ?>
 
 
-    <a href="appointments.php">
-        Back to Appointments
-    </a>
+    <!-- =====================================================
+         BOTTOM ACTIONS
+    ====================================================== -->
 
-    <br>
+    <div class="bottom-actions">
 
-    <a href="dashboard.php">
-        Back to Staff Dashboard
-    </a>
+        <a href="appointments.php">
 
-    <br>
+            <i class="fa-solid fa-arrow-left"></i>
 
-    <a href="../auth/logout.php">
-        Logout
-    </a>
+            Back to Appointments
+
+        </a>
+
+
+        <a href="dashboard.php">
+
+            <i class="fa-solid fa-gauge-high"></i>
+
+            Staff Dashboard
+
+        </a>
+
+
+        <a href="../auth/logout.php">
+
+            <i class="fa-solid fa-right-from-bracket"></i>
+
+            Logout
+
+        </a>
+
+    </div>
+
+
+</main>
 
 </body>
 
