@@ -1,0 +1,9 @@
+Options -Indexes
+
+RewriteEngine On
+RewriteRule ^(?:\.git|config|database|docs|scripts|tests|EXPO-GO-appdev)(?:/|$) - [F,END,NC]
+RewriteRule (^|/)\.(?!well-known(?:/|$)) - [F,END]
+
+<FilesMatch "^(?:\.env(?:\..*)?|.*\.(?:sql|sql\.gz|age|log|ini|cnf|bak))$">
+    Require all denied
+</FilesMatch>

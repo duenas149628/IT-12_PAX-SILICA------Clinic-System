@@ -51,6 +51,7 @@ $message = '';
 $messageType = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    csrf_verify();
 
     $firstName = trim($_POST['first_name'] ?? '');
     $lastName = trim($_POST['last_name'] ?? '');
@@ -87,6 +88,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $address !== '' ? $address : null,
             $patientId
         ]);
+
+        audit_log('patient.profile.updated', ['patient_id' => (int) $patientId]);
 
         $_SESSION['name'] =
             $firstName . ' ' . $lastName;
@@ -697,6 +700,7 @@ if (isset($_GET['updated'])) {
         </div>
 
         <form method="POST">
+<?= csrf_field() ?>
 
             <div class="form-grid">
 

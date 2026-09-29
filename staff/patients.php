@@ -1242,7 +1242,7 @@ $patients = $stmt->fetchAll();
                                 <td>
 
                                     <a
-                                        href="patient_view.php?id=<?= $patient['patient_id'] ?>"
+                                        href="patient_view.php?id=<?= h($patient['patient_id']) ?>"
                                         class="view-button"
                                     >
 

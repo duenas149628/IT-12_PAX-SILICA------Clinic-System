@@ -9,6 +9,10 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'staff') {
 }
 
 $search = trim($_GET['search'] ?? '');
+$visitDate = trim($_GET['visit_date'] ?? '');
+if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $visitDate) || !checkdate((int) substr($visitDate, 5, 2), (int) substr($visitDate, 8, 2), (int) substr($visitDate, 0, 4))) {
+    $visitDate = '';
+}
 
 /*
 |--------------------------------------------------------------------------
@@ -16,45 +20,19 @@ $search = trim($_GET['search'] ?? '');
 |--------------------------------------------------------------------------
 */
 
+$where = [];
+$params = [];
 if ($search !== '') {
-
-    $stmt = $pdo->prepare(
-        "SELECT
-            visit_records.visit_id,
-            visit_records.visit_date,
-            visit_records.chief_complaint,
-            patients.patient_id,
-            patients.patient_number,
-            patients.first_name,
-            patients.last_name
-         FROM visit_records
-         INNER JOIN patients
-            ON visit_records.patient_id = patients.patient_id
-         WHERE
-            patients.patient_number LIKE ?
-            OR patients.first_name LIKE ?
-            OR patients.last_name LIKE ?
-            OR visit_records.chief_complaint LIKE ?
-            OR visit_records.treatment LIKE ?
-         ORDER BY
-            visit_records.visit_date DESC,
-            visit_records.visit_id DESC"
-    );
-
+    $where[] = '(patients.patient_number LIKE ? OR patients.first_name LIKE ? OR patients.last_name LIKE ? OR visit_records.chief_complaint LIKE ? OR visit_records.treatment LIKE ?)';
     $searchTerm = '%' . $search . '%';
+    array_push($params, $searchTerm, $searchTerm, $searchTerm, $searchTerm, $searchTerm);
+}
+if ($visitDate !== '') {
+    $where[] = 'visit_records.visit_date = ?';
+    $params[] = $visitDate;
+}
 
-    $stmt->execute([
-        $searchTerm,
-        $searchTerm,
-        $searchTerm,
-        $searchTerm,
-        $searchTerm
-    ]);
-
-} else {
-
-    $stmt = $pdo->query(
-        "SELECT
+$sql = "SELECT
             visit_records.visit_id,
             visit_records.visit_date,
             visit_records.chief_complaint,
@@ -63,13 +41,14 @@ if ($search !== '') {
             patients.first_name,
             patients.last_name
          FROM visit_records
-         INNER JOIN patients
-            ON visit_records.patient_id = patients.patient_id
-         ORDER BY
-            visit_records.visit_date DESC,
-            visit_records.visit_id DESC"
-    );
+         INNER JOIN patients ON visit_records.patient_id = patients.patient_id";
+if ($where) {
+    $sql .= ' WHERE ' . implode(' AND ', $where);
 }
+$sql .= ' ORDER BY visit_records.visit_date DESC, visit_records.visit_id DESC';
+
+$stmt = $pdo->prepare($sql);
+$stmt->execute($params);
 
 $visits = $stmt->fetchAll();
 
@@ -373,6 +352,10 @@ $visits = $stmt->fetchAll();
 
             display: flex;
 
+            align-items: center;
+
+            flex-wrap: wrap;
+
             gap: 10px;
         }
 
@@ -396,6 +379,34 @@ $visits = $stmt->fetchAll();
             font-size: 14px;
 
             outline: none;
+        }
+
+        .date-input {
+            min-width: 175px;
+            padding: 12px 14px;
+            border: 1px solid #d5d5d5;
+            border-radius: 8px;
+            background: white;
+            color: #333;
+            font: 14px Arial, sans-serif;
+        }
+
+        .date-input:focus {
+            border-color: #167b8c;
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(22, 123, 140, 0.10);
+        }
+
+        .visually-hidden {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border: 0;
         }
 
 
@@ -505,7 +516,7 @@ $visits = $stmt->fetchAll();
 
         .panel {
 
-            padding: 30px;
+            padding: 24px;
 
             background: rgba(255, 255, 255, 0.96);
 
@@ -1174,7 +1185,17 @@ $visits = $stmt->fetchAll();
             </button>
 
 
-            <?php if ($search !== ''): ?>
+            <label class="visually-hidden" for="visit-date">Filter by visit date</label>
+            <input
+                type="date"
+                id="visit-date"
+                name="visit_date"
+                class="date-input"
+                value="<?= h($visitDate) ?>"
+                aria-label="Filter by visit date"
+            >
+
+            <?php if ($search !== '' || $visitDate !== ''): ?>
 
                 <a
                     href="visit_records.php"
@@ -1193,17 +1214,19 @@ $visits = $stmt->fetchAll();
         </form>
 
 
-        <?php if ($search !== ''): ?>
+        <?php if ($search !== '' || $visitDate !== ''): ?>
 
             <div class="search-result">
 
                 <i class="fa-solid fa-filter"></i>
 
-                Search results for:
-
-                <strong>
-                    <?= htmlspecialchars($search) ?>
-                </strong>
+                Showing records
+                <?php if ($search !== ''): ?>
+                    matching <strong><?= h($search) ?></strong>
+                <?php endif; ?>
+                <?php if ($visitDate !== ''): ?>
+                    from <strong><?= h(date('M d, Y', strtotime($visitDate))) ?></strong>
+                <?php endif; ?>
 
             </div>
 

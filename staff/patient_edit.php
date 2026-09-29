@@ -54,6 +54,7 @@ $message_type = '';
 */
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    csrf_verify();
 
     $first_name = trim($_POST['first_name'] ?? '');
     $last_name = trim($_POST['last_name'] ?? '');
@@ -113,6 +114,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ]);
 
             $pdo->commit();
+
+            audit_log('patient.record.updated', ['patient_id' => (int) $patient_id]);
 
             header(
                 'Location: patient_view.php?id='
@@ -253,6 +256,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 
         <form method="POST">
+<?= csrf_field() ?>
 
             <label for="first_name">
                 First Name

@@ -9,6 +9,9 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'patient') {
 }
 
 $patientName = $_SESSION['name'] ?? 'Patient';
+$notificationStmt = $pdo->prepare('SELECT COUNT(*) FROM notifications WHERE recipient_user_id = ? AND read_at IS NULL');
+$notificationStmt->execute([$_SESSION['user_id']]);
+$unreadNotificationCount = (int) $notificationStmt->fetchColumn();
 
 /*
 |--------------------------------------------------------------------------
@@ -518,6 +521,11 @@ if ($patientId) {
 
             </a>
 
+            <a href="../notifications.php">
+                <i class="fa-regular fa-bell"></i>
+                Notifications<?= $unreadNotificationCount > 0 ? ' (' . h($unreadNotificationCount) . ')' : '' ?>
+            </a>
+
 
             <a href="visit_history.php">
 
@@ -526,6 +534,8 @@ if ($patientId) {
                 Records
 
             </a>
+
+            <a href="../auth/password_change.php">Change password</a>
 
 
             <a

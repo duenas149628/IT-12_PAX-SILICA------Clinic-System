@@ -62,6 +62,7 @@ $message_type = '';
 */
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    csrf_verify();
 
     $chief_complaint = trim($_POST['chief_complaint'] ?? '');
     $findings = trim($_POST['findings'] ?? '');
@@ -101,6 +102,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $follow_up,
             $visit_id
         ]);
+
+        audit_log('visit.record.updated', ['visit_id' => (int) $visit_id]);
 
         header(
             'Location: visit_view.php?id=' . $visit_id
@@ -632,7 +635,7 @@ function formatDate($date)
             href="visit_view.php?id=<?= $visit['visit_id'] ?>"
             class="back-link"
         >
-            ← Back to Record
+            &larr; Back to Record
         </a>
 
     </div>
@@ -783,6 +786,7 @@ function formatDate($date)
 
 
             <form method="POST">
+<?= csrf_field() ?>
 
 
                 <!-- CHIEF COMPLAINT -->

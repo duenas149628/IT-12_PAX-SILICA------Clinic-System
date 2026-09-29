@@ -39,6 +39,22 @@ $patientNumber = $patient['patient_number'] ?? 'Not assigned';
 |--------------------------------------------------------------------------
 */
 
+$statusOptions = ['pending', 'confirmed', 'completed', 'cancelled', 'no_show'];
+$statusInput = $_GET['status'] ?? 'all';
+$statusFilter = is_string($statusInput) && in_array($statusInput, $statusOptions, true) ? $statusInput : 'all';
+$dateInput = $_GET['date'] ?? '';
+$dateFilter = is_string($dateInput) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateInput) ? $dateInput : '';
+$where = ['patient_id = ?'];
+$params = [$patientId];
+if ($statusFilter !== 'all') {
+    $where[] = 'status = ?';
+    $params[] = $statusFilter;
+}
+if ($dateFilter !== '') {
+    $where[] = 'COALESCE(confirmed_date, preferred_date) = ?';
+    $params[] = $dateFilter;
+}
+
 $stmt = $pdo->prepare(
     "SELECT
         appointment_id,
@@ -51,7 +67,7 @@ $stmt = $pdo->prepare(
         reason,
         status
      FROM appointments
-     WHERE patient_id = ?
+     WHERE " . implode(' AND ', $where) . "
      ORDER BY
         CASE status
             WHEN 'pending' THEN 1
@@ -60,10 +76,10 @@ $stmt = $pdo->prepare(
             WHEN 'cancelled' THEN 4
             ELSE 5
         END,
-        preferred_date DESC"
+        COALESCE(confirmed_date, preferred_date) DESC"
 );
 
-$stmt->execute([$patientId]);
+$stmt->execute($params);
 
 $appointments = $stmt->fetchAll();
 
@@ -86,6 +102,12 @@ $appointments = $stmt->fetchAll();
     <link
         rel="stylesheet"
         href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"
+    >
+    <link
+        href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css"
+        rel="stylesheet"
+        integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB"
+        crossorigin="anonymous"
     >
 
     <style>
@@ -367,6 +389,24 @@ $appointments = $stmt->fetchAll();
             color: #a33a3a;
         }
 
+        .status-no_show { background:#f1e9f8; color:#703b91; }
+
+        .appointment-filters {
+            display:grid;
+            grid-template-columns:repeat(auto-fit,minmax(180px,1fr));
+            gap:12px;
+            align-items:end;
+            margin-bottom:20px;
+            padding:18px;
+            background:#fff;
+            border:1px solid #e3ecee;
+            border-radius:14px;
+            box-shadow:0 6px 20px rgba(0,0,0,.08);
+        }
+        .appointment-filters label { display:block; margin-bottom:6px; font-weight:600; font-size:13px; }
+        .appointment-filters .form-control,.appointment-filters .form-select { min-height:44px; }
+        .appointment-grid { grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr)); }
+
         .detail {
             display: flex;
 
@@ -466,6 +506,13 @@ $appointments = $stmt->fetchAll();
         }
 
         @media (max-width: 650px) {
+
+            body { background-attachment:scroll; }
+            .header { padding:12px 14px; }
+            .appointment-filters { grid-template-columns:1fr; padding:14px; }
+            .panel { padding:18px 14px; }
+            .appointment-card { padding:16px; }
+            .detail { flex-wrap:wrap; }
 
             .header {
                 flex-direction: column;
@@ -596,6 +643,26 @@ $appointments = $stmt->fetchAll();
 
         </div>
 
+        <form class="appointment-filters" method="GET">
+            <div>
+                <label for="status">Status</label>
+                <select class="form-select" name="status" id="status">
+                    <option value="all" <?= $statusFilter === 'all' ? 'selected' : '' ?>>All statuses</option>
+                    <?php foreach ($statusOptions as $option): ?>
+                        <option value="<?= h($option) ?>" <?= $statusFilter === $option ? 'selected' : '' ?>><?= h(ucwords(str_replace('_', ' ', $option))) ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div>
+                <label for="date">Appointment date</label>
+                <input class="form-control" type="date" id="date" name="date" value="<?= h($dateFilter) ?>">
+            </div>
+            <div class="d-flex gap-2">
+                <button class="btn btn-primary" type="submit"><i class="fa-solid fa-filter"></i> Filter</button>
+                <a class="btn btn-outline-secondary" href="appointments.php">Clear</a>
+            </div>
+        </form>
+
         <?php if (empty($appointments)): ?>
 
             <div class="empty">
@@ -648,7 +715,7 @@ $appointments = $stmt->fetchAll();
                                 class="status <?= htmlspecialchars($statusClass) ?>"
                             >
                                 <?= htmlspecialchars(
-                                    ucfirst($status)
+                                    ucwords(str_replace('_', ' ', $status))
                                 ) ?>
                             </span>
 

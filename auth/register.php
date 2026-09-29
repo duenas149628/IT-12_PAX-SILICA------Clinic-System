@@ -6,11 +6,14 @@ require_once __DIR__ . '/../config/auth.php';
 $message = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    csrf_verify();
 
-    $name = trim($_POST['name']);
-    $email = trim($_POST['email']);
-    $password = $_POST['password'];
-    $confirm_password = $_POST['confirm_password'];
+    $nameInput = $_POST['name'] ?? '';
+    $emailInput = $_POST['email'] ?? '';
+    $name = is_string($nameInput) ? trim($nameInput) : '';
+    $email = is_string($emailInput) ? trim($emailInput) : '';
+    $password = $_POST['password'] ?? '';
+    $confirm_password = $_POST['confirm_password'] ?? '';
 
     if (
         empty($name) ||
@@ -20,6 +23,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     ) {
 
         $message = 'Please fill in all fields.';
+
+    } elseif (strlen($name) > 150 || strlen($email) > 254 || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+
+        $message = 'Please enter a valid name and email address.';
+
+    } elseif (!is_string($password) || !is_string($confirm_password) || strlen($password) < 12 || strlen($password) > 1024) {
+
+        $message = 'Use a password between 12 and 1024 characters.';
 
     } elseif ($password !== $confirm_password) {
 
@@ -59,6 +70,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $email,
                 $hashed_password
             ]);
+
+            audit_log('account.registered', ['new_user_id' => (int) $pdo->lastInsertId()]);
 
             header('Location: login.php?registered=1');
             exit;
@@ -392,7 +405,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <!-- Logo -->
 
         <div class="logo">
-            🦷
+            &#129463;
         </div>
 
 
@@ -419,6 +432,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <!-- Registration form -->
 
         <form method="POST">
+<?= csrf_field() ?>
 
 
             <!-- Name -->
@@ -473,7 +487,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     onclick="togglePassword('password', this)"
                     aria-label="Show password"
                 >
-                    👁
+                    &#128065;
                 </button>
 
             </div>
@@ -501,7 +515,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     onclick="togglePassword('confirm_password', this)"
                     aria-label="Show password"
                 >
-                    👁
+                    &#128065;
                 </button>
 
             </div>
@@ -546,7 +560,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 passwordInput.type = 'text';
 
-                button.textContent = '🙈';
+                button.textContent = '\u{1F648}';
 
                 button.setAttribute(
                     'aria-label',
@@ -557,7 +571,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 passwordInput.type = 'password';
 
-                button.textContent = '👁';
+                button.textContent = '\u{1F441}';
 
                 button.setAttribute(
                     'aria-label',

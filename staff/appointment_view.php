@@ -2,6 +2,7 @@
 
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/auth.php';
+require_once __DIR__ . '/../config/notifications.php';
 
 if (!isset($_SESSION['user_id'])) {
     header('Location: ../auth/login.php');
@@ -49,6 +50,26 @@ function getAppointment(PDO $pdo, int $appointment_id): ?array
     return $appointment ?: null;
 }
 
+function findScheduleConflict(PDO $pdo, string $date, string $start, string $end, int $excludeId): ?array
+{
+    $stmt = $pdo->prepare(
+        "SELECT a.appointment_id, a.confirmed_date, a.confirmed_start_time,
+                a.confirmed_end_time, p.first_name, p.last_name, p.patient_number
+         FROM appointments a
+         INNER JOIN patients p ON p.patient_id = a.patient_id
+         WHERE a.status = 'confirmed'
+           AND a.confirmed_date = ?
+           AND a.confirmed_start_time < ?
+           AND a.confirmed_end_time > ?
+           AND a.appointment_id != ?
+         ORDER BY a.confirmed_start_time
+         LIMIT 1"
+    );
+    $stmt->execute([$date, $end, $start, $excludeId]);
+    $conflict = $stmt->fetch();
+    return $conflict ?: null;
+}
+
 
 $appointment = getAppointment($pdo, $appointment_id);
 
@@ -58,6 +79,7 @@ if (!$appointment) {
 
 $message = '';
 $message_type = '';
+$conflict = null;
 
 
 /*
@@ -67,8 +89,13 @@ $message_type = '';
 */
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    csrf_verify();
 
     $action = $_POST['action'] ?? '';
+    audit_log('appointment.action.submitted', [
+        'appointment_id' => (int) $appointment_id,
+        'action' => is_string($action) ? preg_replace('/[^a-z_]/i', '', $action) : 'invalid',
+    ]);
 
 
     /*
@@ -83,28 +110,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $confirmed_start_time = $appointment['preferred_start_time'];
         $confirmed_end_time = $appointment['preferred_end_time'];
 
-        $stmt = $pdo->prepare(
-            "SELECT appointment_id
-             FROM appointments
-             WHERE status = 'confirmed'
-             AND confirmed_date = ?
-             AND confirmed_start_time < ?
-             AND confirmed_end_time > ?
-             AND appointment_id != ?"
-        );
-
-        $stmt->execute([
-            $confirmed_date,
-            $confirmed_end_time,
-            $confirmed_start_time,
-            $appointment_id
-        ]);
-
-        $conflict = $stmt->fetch();
+        $conflict = findScheduleConflict($pdo, $confirmed_date, $confirmed_start_time, $confirmed_end_time, $appointment_id);
 
         if ($conflict) {
 
-            $message = 'The patient requested time conflicts with another confirmed appointment. Please configure a different schedule.';
+            $message = 'This time overlaps an existing confirmed appointment.';
             $message_type = 'error';
 
         } else {
@@ -162,28 +172,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         } else {
 
-            $stmt = $pdo->prepare(
-                "SELECT appointment_id
-                 FROM appointments
-                 WHERE status = 'confirmed'
-                 AND confirmed_date = ?
-                 AND confirmed_start_time < ?
-                 AND confirmed_end_time > ?
-                 AND appointment_id != ?"
-            );
-
-            $stmt->execute([
-                $confirmed_date,
-                $confirmed_end_time,
-                $confirmed_start_time,
-                $appointment_id
-            ]);
-
-            $conflict = $stmt->fetch();
+            $conflict = findScheduleConflict($pdo, $confirmed_date, $confirmed_start_time, $confirmed_end_time, $appointment_id);
 
             if ($conflict) {
 
-                $message = 'The selected time conflicts with another confirmed appointment.';
+                $message = 'This time overlaps an existing confirmed appointment.';
                 $message_type = 'error';
 
             } else {
@@ -242,28 +235,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         } else {
 
-            $stmt = $pdo->prepare(
-                "SELECT appointment_id
-                 FROM appointments
-                 WHERE status = 'confirmed'
-                 AND confirmed_date = ?
-                 AND confirmed_start_time < ?
-                 AND confirmed_end_time > ?
-                 AND appointment_id != ?"
-            );
-
-            $stmt->execute([
-                $confirmed_date,
-                $confirmed_end_time,
-                $confirmed_start_time,
-                $appointment_id
-            ]);
-
-            $conflict = $stmt->fetch();
+            $conflict = findScheduleConflict($pdo, $confirmed_date, $confirmed_start_time, $confirmed_end_time, $appointment_id);
 
             if ($conflict) {
 
-                $message = 'The selected time conflicts with another confirmed appointment.';
+                $message = 'This time overlaps an existing confirmed appointment.';
                 $message_type = 'error';
 
             } else {
@@ -438,6 +414,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $appointment = getAppointment($pdo, $appointment_id);
         }
+    }
+
+    if ($message_type === 'success') {
+        notify_patient_of_appointment($pdo, $appointment_id);
     }
 }
 
@@ -718,6 +698,17 @@ function formatStatus(string $status): string
 
             color: #a33a3a;
         }
+
+        .conflict-details {
+            display: grid;
+            gap: 5px;
+            margin-left: 8px;
+            padding: 11px 13px;
+            background: rgba(255,255,255,.72);
+            border: 1px solid #efcaca;
+            border-radius: 8px;
+        }
+        .conflict-details a { color:#8f2525; font-weight:700; }
 
 
         /* =========================================================
@@ -1335,7 +1326,7 @@ function formatStatus(string $status): string
 
     <?php if ($message): ?>
 
-        <div class="message <?= htmlspecialchars($message_type) ?>">
+        <div class="message <?= htmlspecialchars($message_type) ?>" role="<?= $message_type === 'error' ? 'alert' : 'status' ?>">
 
             <i class="fa-solid
                 <?= $message_type === 'success'
@@ -1343,7 +1334,17 @@ function formatStatus(string $status): string
                     : 'fa-circle-exclamation'
                 ?>"></i>
 
-            <?= htmlspecialchars($message) ?>
+            <div>
+                <?= htmlspecialchars($message) ?>
+                <?php if ($conflict): ?>
+                    <div class="conflict-details">
+                        <strong>Conflicting booking</strong>
+                        <span><?= h($conflict['first_name'] . ' ' . $conflict['last_name']) ?> · Patient <?= h($conflict['patient_number']) ?></span>
+                        <span><?= h(date('M d, Y', strtotime($conflict['confirmed_date']))) ?>, <?= h(date('g:i A', strtotime($conflict['confirmed_start_time']))) ?>–<?= h(date('g:i A', strtotime($conflict['confirmed_end_time']))) ?></span>
+                        <a href="appointment_view.php?id=<?= h($conflict['appointment_id']) ?>">Open appointment #<?= h($conflict['appointment_id']) ?></a>
+                    </div>
+                <?php endif; ?>
+            </div>
 
         </div>
 
@@ -1596,6 +1597,7 @@ function formatStatus(string $status): string
                 method="POST"
                 onsubmit="return confirm('Accept this appointment using the requested date and time?');"
             >
+<?= csrf_field() ?>
 
                 <button
                     type="submit"
@@ -1664,6 +1666,7 @@ function formatStatus(string $status): string
 
 
             <form method="POST">
+<?= csrf_field() ?>
 
                 <div class="form-grid">
 
@@ -1908,6 +1911,7 @@ function formatStatus(string $status): string
                     method="POST"
                     onsubmit="return confirm('Mark this appointment as completed? A visit record will be created automatically.');"
                 >
+<?= csrf_field() ?>
 
                     <button
                         type="submit"
@@ -1929,6 +1933,7 @@ function formatStatus(string $status): string
                     method="POST"
                     onsubmit="return confirm('Mark this appointment as no-show?');"
                 >
+<?= csrf_field() ?>
 
                     <button
                         type="submit"
@@ -2071,6 +2076,7 @@ function formatStatus(string $status): string
                 method="POST"
                 onsubmit="return confirm('Are you sure you want to cancel this appointment?');"
             >
+<?= csrf_field() ?>
 
                 <button
                     type="submit"

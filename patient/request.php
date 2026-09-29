@@ -2,6 +2,7 @@
 
 require_once __DIR__ . '/../config/auth.php';
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../config/notifications.php';
 
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'patient') {
     header('Location: ../auth/login.php');
@@ -48,6 +49,7 @@ $preferredEndTime = '';
 $reason = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    csrf_verify();
 
     $preferredDate = trim(
         $_POST['preferred_date'] ?? ''
@@ -65,13 +67,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $_POST['reason'] ?? ''
     );
 
+    $dateValue = DateTime::createFromFormat('!Y-m-d', $preferredDate);
+    $dateIsValid = $dateValue && $dateValue->format('Y-m-d') === $preferredDate;
+    $timePattern = '/^(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/';
+
     if (
-        $preferredDate === '' ||
-        $preferredStartTime === '' ||
-        $preferredEndTime === ''
+        !$dateIsValid ||
+        !preg_match($timePattern, $preferredStartTime) ||
+        !preg_match($timePattern, $preferredEndTime) ||
+        strlen($reason) > 1000
     ) {
 
         $message = 'Please complete the preferred date and time.';
+        $messageType = 'error';
+
+    } elseif ($dateValue < new DateTime('today')) {
+
+        $message = 'Please choose today or a future date.';
         $messageType = 'error';
 
     } elseif ($reason === '') {
@@ -109,6 +121,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $preferredEndTime,
             $reason
         ]);
+
+        audit_log('appointment.request.created', ['appointment_id' => (int) $pdo->lastInsertId()]);
+        notify_staff($pdo, (int) $pdo->lastInsertId(), 'appointment.request', 'New appointment request', 'A patient submitted an appointment request for review.');
 
         $message = 'Appointment request submitted successfully.';
         $messageType = 'success';
@@ -719,6 +734,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </div>
 
         <form method="POST">
+<?= csrf_field() ?>
 
             <div class="form-grid">
 

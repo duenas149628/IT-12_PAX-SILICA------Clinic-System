@@ -24,6 +24,30 @@ $pendingCount = $pdo->query(
     "SELECT COUNT(*) FROM appointments WHERE status = 'pending'"
 )->fetchColumn();
 
+$todayAppointmentCount = $pdo->query(
+    "SELECT COUNT(*) FROM appointments WHERE status = 'confirmed' AND confirmed_date = CURDATE()"
+)->fetchColumn();
+
+$confirmedCount = $pdo->query(
+    "SELECT COUNT(*) FROM appointments WHERE status = 'confirmed'"
+)->fetchColumn();
+
+$completedCount = $pdo->query(
+    "SELECT COUNT(*) FROM appointments WHERE status = 'completed'"
+)->fetchColumn();
+
+$monthVisitCount = $pdo->query(
+    "SELECT COUNT(*) FROM visit_records WHERE visit_date >= DATE_FORMAT(CURDATE(), '%Y-%m-01') AND visit_date < DATE_ADD(CURDATE(), INTERVAL 1 DAY)"
+)->fetchColumn();
+
+$completionRate = (int) $appointmentCount > 0
+    ? (int) round(((int) $completedCount / (int) $appointmentCount) * 100)
+    : 0;
+
+$notificationStmt = $pdo->prepare('SELECT COUNT(*) FROM notifications WHERE recipient_user_id = ? AND read_at IS NULL');
+$notificationStmt->execute([$_SESSION['user_id']]);
+$unreadNotificationCount = (int) $notificationStmt->fetchColumn();
+
 ?>
 
 <!DOCTYPE html>
@@ -457,6 +481,26 @@ $pendingCount = $pdo->query(
 
             </a>
 
+            <a href="reports.php">
+
+                <i class="fa-solid fa-chart-column"></i>
+
+                Reports
+
+            </a>
+
+            <a href="../notifications.php">
+                <i class="fa-regular fa-bell"></i>
+                Notifications<?= $unreadNotificationCount > 0 ? ' (' . h($unreadNotificationCount) . ')' : '' ?>
+            </a>
+
+            <a href="activity_log.php">
+                <i class="fa-solid fa-list-check"></i>
+                Activity log
+            </a>
+
+            <a href="../auth/password_change.php">Change password</a>
+
 
             <a
                 href="../auth/logout.php"
@@ -595,6 +639,36 @@ $pendingCount = $pdo->query(
 
             </div>
 
+            <div class="card">
+                <div class="card-icon"><i class="fa-solid fa-calendar-day"></i></div>
+                <h3>Today's Appointments</h3>
+                <div class="card-number"><?= h($todayAppointmentCount) ?></div>
+            </div>
+
+            <div class="card">
+                <div class="card-icon"><i class="fa-solid fa-calendar-check"></i></div>
+                <h3>Confirmed Appointments</h3>
+                <div class="card-number"><?= h($confirmedCount) ?></div>
+            </div>
+
+            <div class="card">
+                <div class="card-icon"><i class="fa-solid fa-circle-check"></i></div>
+                <h3>Completed Appointments</h3>
+                <div class="card-number"><?= h($completedCount) ?></div>
+            </div>
+
+            <div class="card">
+                <div class="card-icon"><i class="fa-solid fa-chart-line"></i></div>
+                <h3>Visit Records This Month</h3>
+                <div class="card-number"><?= h($monthVisitCount) ?></div>
+            </div>
+
+            <div class="card">
+                <div class="card-icon"><i class="fa-solid fa-percent"></i></div>
+                <h3>Appointment Completion</h3>
+                <div class="card-number"><?= h($completionRate) ?>%</div>
+            </div>
+
         </section>
 
 
@@ -667,6 +741,11 @@ $pendingCount = $pdo->query(
                         Manage patient visit records.
                     </span>
 
+                </a>
+
+                <a href="reports.php" class="action">
+                    <strong><i class="fa-solid fa-chart-column"></i> View Reports</strong>
+                    <span>Review appointment and visit activity by date range.</span>
                 </a>
 
 

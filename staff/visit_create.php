@@ -96,6 +96,7 @@ $message_type = '';
 */
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    csrf_verify();
 
     $chief_complaint = trim($_POST['chief_complaint'] ?? '');
     $findings = trim($_POST['findings'] ?? '');
@@ -146,6 +147,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $visit_id = $pdo->lastInsertId();
 
+        audit_log('visit.record.created', ['visit_id' => (int) $visit_id]);
+
         header(
             'Location: visit_view.php?id='
             . $visit_id
@@ -170,26 +173,63 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     <title>Create Visit Record - The Tooth Lounge</title>
 
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+
     <style>
 
         body {
-            font-family: Arial, sans-serif;
-            max-width: 800px;
-            margin: 40px auto;
-            padding: 20px;
+            min-height: 100vh;
+            margin: 0;
+            font-family: Arial, Helvetica, sans-serif;
+            color: #333;
+            background: linear-gradient(rgba(0, 135, 155, .78), rgba(20, 85, 150, .78)),
+                url("https://images.unsplash.com/photo-1606811971618-4486d14f3f99?auto=format&fit=crop&w=1920&q=80") center / cover fixed;
         }
 
         .section {
-            border: 1px solid #ccc;
-            padding: 20px;
-            margin-top: 20px;
-            border-radius: 8px;
+            min-width: 0;
+            padding: 22px;
+            background: rgba(255,255,255,.97);
+            border: 0;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,.15);
         }
 
-        label {
-            display: block;
-            margin-top: 15px;
-            font-weight: bold;
+        .header {
+            min-height: 75px; display: flex; align-items: center; justify-content: space-between;
+            padding: 12px 35px; background: rgba(255,255,255,.96); box-shadow: 0 3px 15px rgba(0,0,0,.15);
+        }
+        .logo { display: flex; align-items: center; gap: 12px; color: #167b8c; font-size: 21px; font-weight: bold; text-decoration: none; }
+        .logo-icon { width: 43px; height: 43px; display: grid; place-items: center; border-radius: 50%; background: #e6f7fa; color: #167b8c; }
+        .nav { display: flex; align-items: center; gap: 8px; }
+        .nav a, .bottom-links a { color: #167b8c; text-decoration: none; font-weight: 600; }
+        .nav a { padding: 10px 13px; border-radius: 8px; }
+        .nav a:hover { background: #e6f7fa; }
+        .container { width: 1100px; max-width: 92%; margin: 35px auto; }
+        .welcome { margin-bottom: 22px; color: #fff; }
+        .welcome h1 { margin-bottom: 7px; font-size: 30px; font-weight: 600; }
+        .welcome p { opacity: .92; }
+        .record-layout { display: grid; grid-template-columns: minmax(260px, .8fr) minmax(0, 1.2fr); align-items: start; gap: 20px; }
+        .section h2 { margin-bottom: 18px; color: #167b8c; font-size: 20px; }
+        .patient-info p { padding: 12px 0; border-bottom: 1px solid #eaf0f1; color: #56676b; font-size: 14px; }
+        .patient-info p:last-child { border-bottom: 0; }
+        .patient-info strong { display: block; margin-bottom: 4px; color: #718185; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+        .appointment-badge { display: inline-flex; align-items: center; gap: 7px; margin-bottom: 18px; padding: 7px 10px; border-radius: 20px; background: #e6f7fa; color: #167b8c; font-size: 12px; font-weight: 700; }
+        label { display: block; margin-top: 15px; color: #45575b; font-size: 13px; font-weight: 700; }
+        .section textarea { min-height: 78px; border: 1px solid #d8e2e4; border-radius: 8px; font: 14px Arial, sans-serif; }
+        .section textarea:focus { border-color: #167b8c; outline: 0; box-shadow: 0 0 0 3px rgba(22,123,140,.12); }
+        button { width: 100%; padding: 12px; margin-top: 20px; background: #167b8c; color: white; border: 0; border-radius: 8px; font-weight: 700; cursor: pointer; }
+        button:hover { background: #126c79; }
+        .bottom-links { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 20px; padding: 15px 18px; border-radius: 12px; background: rgba(255,255,255,.96); font-size: 13px; }
+        @media (max-width: 760px) {
+            .header { padding: 12px 18px; }
+            .record-layout { grid-template-columns: 1fr; }
+            .container { max-width: 94%; margin: 25px auto; }
+        }
+        @media (max-width: 480px) {
+            .header { align-items: flex-start; flex-direction: column; gap: 10px; }
+            .nav { flex-wrap: wrap; }
+            .section { padding: 19px; }
         }
 
         textarea {
@@ -199,17 +239,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             margin-top: 5px;
             box-sizing: border-box;
             resize: vertical;
-        }
-
-        button {
-            width: 100%;
-            padding: 12px;
-            margin-top: 20px;
-            background: #333;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
         }
 
         .message {
@@ -226,25 +255,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             background: #f2dede;
         }
 
-        a {
-            display: inline-block;
-            margin-top: 15px;
-        }
-
     </style>
 
 </head>
 
 <body>
 
-    <h1>Create Visit Record</h1>
+    <header class="header">
+        <a class="logo" href="dashboard.php">
+            <span class="logo-icon"><i class="fa-solid fa-tooth" aria-hidden="true"></i></span>
+            The Tooth Lounge
+        </a>
+        <nav class="nav" aria-label="Staff navigation">
+            <a href="appointments.php"><i class="fa-solid fa-calendar-check" aria-hidden="true"></i> Appointments</a>
+            <a href="visit_records.php"><i class="fa-solid fa-file-medical" aria-hidden="true"></i> Visit records</a>
+        </nav>
+    </header>
 
+    <main class="container">
+        <section class="welcome">
+            <h1>Create Visit Record</h1>
+            <p>Review the current visit and enter its dental record.</p>
+        </section>
 
-    <!-- PATIENT INFORMATION -->
+    <div class="record-layout">
+    <!-- CURRENT VISIT -->
 
-    <div class="section">
+    <section class="section patient-info">
 
-        <h2>Patient Information</h2>
+        <h2><i class="fa-solid fa-clipboard-list" aria-hidden="true"></i> Current visit</h2>
+        <span class="appointment-badge"><i class="fa-solid fa-circle-check" aria-hidden="true"></i> Appointment completed</span>
 
         <p>
             <strong>Name:</strong>
@@ -280,12 +320,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ) ?>
         </p>
 
-    </div>
+    </section>
 
 
     <!-- VISIT RECORD FORM -->
 
-    <div class="section">
+    <section class="section">
 
         <h2>Visit Details</h2>
 
@@ -301,6 +341,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 
         <form method="POST">
+<?= csrf_field() ?>
 
             <label for="chief_complaint">
                 Chief Complaint
@@ -363,24 +404,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         </form>
 
+    </section>
+
     </div>
 
-
-    <a href="appointments.php">
-        Back to Appointments
-    </a>
-
-    <br>
-
-    <a href="dashboard.php">
-        Back to Staff Dashboard
-    </a>
-
-    <br>
-
-    <a href="../auth/logout.php">
-        Logout
-    </a>
+    <nav class="bottom-links" aria-label="More staff links">
+        <a href="appointments.php"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Back to Appointments</a>
+        <a href="dashboard.php"><i class="fa-solid fa-gauge-high" aria-hidden="true"></i> Staff Dashboard</a>
+        <a href="../auth/logout.php"><i class="fa-solid fa-right-from-bracket" aria-hidden="true"></i> Logout</a>
+    </nav>
+    </main>
 
 </body>
 

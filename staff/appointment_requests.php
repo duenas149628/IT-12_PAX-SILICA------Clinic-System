@@ -191,7 +191,7 @@ $requests = $stmt->fetchAll();
 
                                 <td>
                                     <a
-                                        href="appointment_view.php?id=<?= $request['appointment_id'] ?>"
+                                        href="appointment_view.php?id=<?= h($request['appointment_id']) ?>"
                                         class="button"
                                     >
                                         Manage

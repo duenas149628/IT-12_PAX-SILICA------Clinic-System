@@ -8,12 +8,52 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'staff') {
     exit;
 }
 
-$stmt = $pdo->query(
-    "SELECT
+$statusOptions = ['pending', 'confirmed', 'completed', 'cancelled', 'no_show'];
+$statusInput = $_GET['status'] ?? 'all';
+$statusFilter = is_string($statusInput) && in_array($statusInput, $statusOptions, true)
+    ? $statusInput
+    : 'all';
+$todayView = ($_GET['view'] ?? '') === 'today';
+$dateInput = $_GET['date'] ?? '';
+$dateFilter = is_string($dateInput) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateInput)
+    ? $dateInput
+    : '';
+$searchInput = $_GET['search'] ?? '';
+$search = is_string($searchInput) ? trim($searchInput) : '';
+$search = substr($search, 0, 100);
+
+$where = [];
+$params = [];
+if ($todayView) {
+    $where[] = "appointments.status = 'confirmed'";
+    $where[] = 'appointments.confirmed_date = ?';
+    $params[] = date('Y-m-d');
+    $statusFilter = 'confirmed';
+    $dateFilter = date('Y-m-d');
+} else {
+    if ($statusFilter !== 'all') {
+        $where[] = 'appointments.status = ?';
+        $params[] = $statusFilter;
+    }
+    if ($dateFilter !== '') {
+        $where[] = 'COALESCE(appointments.confirmed_date, appointments.preferred_date) = ?';
+        $params[] = $dateFilter;
+    }
+}
+if ($search !== '') {
+    $where[] = '(patients.first_name LIKE ? OR patients.last_name LIKE ? OR patients.patient_number LIKE ?)';
+    $needle = '%' . addcslashes($search, '%_\\') . '%';
+    array_push($params, $needle, $needle, $needle);
+}
+
+$sql = "SELECT
         appointments.appointment_id,
         appointments.preferred_date,
         appointments.preferred_start_time,
         appointments.preferred_end_time,
+        appointments.confirmed_date,
+        appointments.confirmed_start_time,
+        appointments.confirmed_end_time,
         appointments.reason,
         appointments.status,
         patients.patient_number,
@@ -23,12 +63,40 @@ $stmt = $pdo->query(
      FROM appointments
      INNER JOIN patients
         ON appointments.patient_id = patients.patient_id
-     WHERE appointments.status = 'pending'
-     ORDER BY appointments.preferred_date ASC,
-              appointments.preferred_start_time ASC"
-);
+     " . ($where ? 'WHERE ' . implode(' AND ', $where) : '') . "
+     ORDER BY COALESCE(appointments.confirmed_date, appointments.preferred_date) ASC,
+              COALESCE(appointments.confirmed_start_time, appointments.preferred_start_time) ASC";
+$stmt = $pdo->prepare($sql);
+$stmt->execute($params);
 
 $requests = $stmt->fetchAll();
+$pendingCount = (int) $pdo->query("SELECT COUNT(*) FROM appointments WHERE status = 'pending'")->fetchColumn();
+$todayCountStmt = $pdo->prepare("SELECT COUNT(*) FROM appointments WHERE status = 'confirmed' AND confirmed_date = ?");
+$todayCountStmt->execute([date('Y-m-d')]);
+$todayCount = (int) $todayCountStmt->fetchColumn();
+
+$monthInput = $_GET['month'] ?? '';
+$monthValue = is_string($monthInput) && preg_match('/^\d{4}-\d{2}$/', $monthInput)
+    ? $monthInput
+    : ($dateFilter !== '' ? substr($dateFilter, 0, 7) : date('Y-m'));
+$calendarMonth = DateTime::createFromFormat('!Y-m', $monthValue);
+if (!$calendarMonth || $calendarMonth->format('Y-m') !== $monthValue) {
+    $calendarMonth = new DateTime('first day of this month');
+}
+$monthStart = $calendarMonth->format('Y-m-01');
+$nextMonthStart = (clone $calendarMonth)->modify('first day of next month')->format('Y-m-01');
+$calendarStmt = $pdo->prepare(
+    "SELECT appointments.appointment_id, appointments.confirmed_date AS event_date,
+            appointments.confirmed_start_time AS starts_at, appointments.confirmed_end_time AS ends_at,
+            patients.first_name, patients.last_name, patients.patient_number
+     FROM appointments
+     INNER JOIN patients ON appointments.patient_id = patients.patient_id
+     WHERE appointments.status = 'confirmed'
+       AND appointments.confirmed_date >= ? AND appointments.confirmed_date < ?
+     ORDER BY appointments.confirmed_date, appointments.confirmed_start_time"
+);
+$calendarStmt->execute([$monthStart, $nextMonthStart]);
+$calendarEvents = $calendarStmt->fetchAll();
 
 ?>
 
@@ -47,6 +115,12 @@ $requests = $stmt->fetchAll();
     <link
         rel="stylesheet"
         href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"
+    >
+    <link
+        href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css"
+        rel="stylesheet"
+        integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB"
+        crossorigin="anonymous"
     >
 
     <style>
@@ -375,6 +449,70 @@ $requests = $stmt->fetchAll();
             font-weight: 600;
         }
 
+        .status-pending { background: #fff4d6; color: #8a5a00; }
+        .status-confirmed { background: #e1f5ec; color: #176b45; }
+        .status-completed { background: #e7efff; color: #315ca8; }
+        .status-cancelled { background: #fde8e8; color: #a12f36; }
+        .status-no_show { background: #f1e9f8; color: #703b91; }
+
+        .appointment-filters, .quick-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 14px;
+            margin: 18px 0;
+        }
+        .appointment-filters {
+            align-items: end;
+            padding: 20px;
+            background: rgba(255,255,255,.97);
+            border-radius: 14px;
+            box-shadow: 0 8px 25px rgba(0,0,0,.12);
+        }
+        .appointment-filters label { display:block; margin-bottom:6px; font-size:13px; font-weight:600; color:#40545a; }
+        .appointment-filters .form-control, .appointment-filters .form-select { min-height:44px; }
+        .quick-stat {
+            display:flex; align-items:center; justify-content:space-between; gap:12px;
+            padding:16px 20px; color:#27454c; text-decoration:none;
+            background:rgba(255,255,255,.97); border-radius:14px;
+            box-shadow:0 6px 20px rgba(0,0,0,.1);
+        }
+        .quick-stat:hover { color:#116c7b; transform:translateY(-1px); }
+        .quick-stat strong { font-size:24px; }
+        .table-container { -webkit-overflow-scrolling:touch; }
+        tbody tr:hover { background:#f4fbfc; }
+
+        .schedule-panel {
+            margin:18px 0 24px; padding:22px;
+            background:rgba(255,255,255,.97); border-radius:16px;
+            box-shadow:0 10px 30px rgba(0,0,0,.12);
+        }
+        .calendar-toolbar,.agenda-heading { display:flex; align-items:center; justify-content:space-between; gap:14px; }
+        .calendar-toolbar h2 { margin:0 0 5px; color:#174b55; font-size:22px; }
+        .calendar-toolbar p,.agenda-heading p { margin:0; color:#66777b; font-size:13px; }
+        .calendar-navigation { display:flex; gap:7px; }
+        .schedule-layout { display:grid; grid-template-columns:minmax(0,1.25fr) minmax(310px,.75fr); gap:22px; margin-top:20px; }
+        .calendar-weekdays,.calendar-grid { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); }
+        .calendar-weekdays span { padding:8px 3px; color:#64777b; text-align:center; font-size:12px; font-weight:700; }
+        .calendar-day { display:flex; flex-direction:column; align-items:flex-start; gap:6px; min-height:72px; padding:9px; border:1px solid #e4edef; background:#fff; color:#29484f; text-align:left; }
+        .calendar-day:not(:disabled) { cursor:pointer; }
+        .calendar-day:not(:disabled):hover { background:#f0fafb; border-color:#8ccbd3; }
+        .calendar-day:disabled { background:#f8fafb; opacity:.55; }
+        .calendar-day.selected { background:#e8f7f9; border:2px solid #168ca0; padding:8px; }
+        .calendar-day.is-today .calendar-day-number { color:#087c8e; font-weight:800; }
+        .calendar-day-number { font-size:14px; }
+        .calendar-event-count { padding:3px 6px; border-radius:20px; background:#dff3ec; color:#176b45; font-size:10px; font-weight:700; }
+        .day-agenda { min-width:0; padding:15px; border:1px solid #e4edef; border-radius:12px; background:#fbfdfd; }
+        .agenda-heading { align-items:flex-start; margin-bottom:13px; }
+        .agenda-heading h3 { margin:0 0 4px; color:#174b55; font-size:17px; }
+        .timeline { max-height:520px; overflow:auto; padding:4px 2px; }
+        .timeline-track { position:relative; min-width:240px; margin-left:58px; border-left:1px solid #dbe7e9; }
+        .timeline-hour { position:absolute; left:-58px; width:50px; height:1px; border-top:1px solid #e4edef; color:#728387; font-size:10px; transform:translateY(-50%); }
+        .schedule-event { position:absolute; left:8px; right:8px; z-index:1; display:flex; flex-direction:column; gap:2px; overflow:hidden; padding:6px 9px; border-left:4px solid #17846f; border-radius:6px; background:#e4f5ee; color:#184f40; text-decoration:none; font-size:12px; box-shadow:0 2px 5px rgba(0,0,0,.07); }
+        .schedule-event:hover { z-index:2; color:#103d31; background:#d5efe4; }
+        .schedule-event span,.schedule-event small { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .schedule-event.has-overlap { border-left-color:#c53d46; background:#ffeded; color:#8f2525; }
+        .agenda-empty { margin:0; padding:20px 12px; color:#718084; background:white; border-radius:8px; text-align:center; }
+
         /* MANAGE BUTTON */
 
         .button {
@@ -521,6 +659,21 @@ $requests = $stmt->fetchAll();
 
         @media (max-width: 600px) {
 
+            .header { padding:12px 16px; }
+            .nav { width:100%; }
+            .container { width:100%; max-width:100%; padding:18px 14px; }
+            .appointment-filters { padding:14px; grid-template-columns:1fr; }
+            .schedule-panel { padding:14px; }
+            .calendar-toolbar { align-items:flex-start; flex-direction:column; }
+            .schedule-layout { grid-template-columns:1fr; }
+            .calendar-day { min-height:58px; padding:6px 4px; }
+            .calendar-day.selected { padding:5px 3px; }
+            .calendar-event-count { padding:2px 4px; font-size:9px; }
+            .day-agenda { padding:12px; }
+            .quick-stats { grid-template-columns:1fr 1fr; gap:8px; }
+            .quick-stat { padding:12px; font-size:13px; }
+            .quick-stat strong { font-size:20px; }
+
             .page-title h1 {
                 font-size: 25px;
             }
@@ -599,6 +752,11 @@ $requests = $stmt->fetchAll();
 
             </a>
 
+            <a href="reports.php">
+                <i class="fa-solid fa-chart-column"></i>
+                Reports
+            </a>
+
 
             <a
                 href="../auth/logout.php"
@@ -627,16 +785,215 @@ $requests = $stmt->fetchAll();
 
                 <i class="fa-solid fa-calendar-plus"></i>
 
-                Appointment Requests
+                Appointments
 
             </h1>
 
             <p>
-                Review and manage pending appointment requests from patients.
+                Search, filter, and manage patient requests and confirmed visits.
             </p>
 
         </section>
 
+
+        <div class="quick-stats">
+            <a class="quick-stat" href="appointments.php?status=pending">
+                <span><i class="fa-regular fa-clock"></i> Pending requests</span>
+                <strong><?= h($pendingCount) ?></strong>
+            </a>
+            <a class="quick-stat" href="appointments.php?view=today">
+                <span><i class="fa-solid fa-calendar-day"></i> Today's appointments</span>
+                <strong><?= h($todayCount) ?></strong>
+            </a>
+        </div>
+
+        <form class="appointment-filters" method="GET">
+            <div>
+                <label for="status">Status</label>
+                <select class="form-select" name="status" id="status">
+                    <option value="all" <?= $statusFilter === 'all' ? 'selected' : '' ?>>All statuses</option>
+                    <?php foreach ($statusOptions as $option): ?>
+                        <option value="<?= h($option) ?>" <?= $statusFilter === $option ? 'selected' : '' ?>><?= h(ucwords(str_replace('_', ' ', $option))) ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div>
+                <label for="date">Appointment date</label>
+                <input class="form-control" type="date" name="date" id="date" value="<?= h($dateFilter) ?>">
+            </div>
+            <div>
+                <label for="search">Patient or number</label>
+                <input class="form-control" type="search" name="search" id="search" maxlength="100" value="<?= h($search) ?>" placeholder="Search patients">
+            </div>
+            <div class="d-flex gap-2">
+                <button class="btn btn-primary" type="submit"><i class="fa-solid fa-filter"></i> Filter</button>
+                <a class="btn btn-outline-secondary" href="appointments.php">Clear</a>
+            </div>
+        </form>
+
+        <?php
+        $previousMonth = (clone $calendarMonth)->modify('-1 month')->format('Y-m');
+        $followingMonth = (clone $calendarMonth)->modify('+1 month')->format('Y-m');
+        $currentMonth = date('Y-m');
+        ?>
+        <section class="schedule-panel" aria-labelledby="calendarTitle">
+            <div class="calendar-toolbar">
+                <div>
+                    <h2 id="calendarTitle">Visual schedule</h2>
+                    <p>Confirmed appointments for <?= h($calendarMonth->format('F Y')) ?>. Select a day to view its timeline.</p>
+                </div>
+                <div class="calendar-navigation">
+                    <a class="btn btn-outline-secondary" aria-label="Previous month" href="?month=<?= h($previousMonth) ?>"><i class="fa-solid fa-chevron-left"></i></a>
+                    <a class="btn btn-outline-secondary" href="?month=<?= h($currentMonth) ?>">Today</a>
+                    <a class="btn btn-outline-secondary" aria-label="Next month" href="?month=<?= h($followingMonth) ?>"><i class="fa-solid fa-chevron-right"></i></a>
+                </div>
+            </div>
+            <div class="schedule-layout">
+                <div class="calendar-area">
+                    <div class="calendar-weekdays" aria-hidden="true">
+                        <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+                    </div>
+                    <div class="calendar-grid" id="calendarGrid" role="grid" aria-label="Appointment calendar"></div>
+                </div>
+                <aside class="day-agenda" aria-live="polite">
+                    <div class="agenda-heading">
+                        <div><h3 id="selectedDateHeading"></h3><p id="agendaSummary"></p></div>
+                        <button class="btn btn-sm btn-outline-primary" type="button" id="applySelectedDate">Filter list</button>
+                    </div>
+                    <div class="timeline" id="dayTimeline"></div>
+                </aside>
+            </div>
+        </section>
+        <script>
+            const scheduleMonth = <?= json_encode($calendarMonth->format('Y-m')) ?>;
+            const filteredDate = <?= json_encode($dateFilter) ?>;
+            const scheduleEvents = <?= json_encode($calendarEvents, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+            const monthParts = scheduleMonth.split('-').map(Number);
+            const calendarYear = monthParts[0];
+            const calendarMonthIndex = monthParts[1] - 1;
+            const calendarGrid = document.getElementById('calendarGrid');
+            const scheduleDateField = document.getElementById('date');
+            const selectedDateHeading = document.getElementById('selectedDateHeading');
+            const agendaSummary = document.getElementById('agendaSummary');
+            const dayTimeline = document.getElementById('dayTimeline');
+            const eventsByDate = scheduleEvents.reduce((map, event) => {
+                (map[event.event_date] ||= []).push(event);
+                return map;
+            }, {});
+            const toIsoDate = (day) => `${scheduleMonth}-${String(day).padStart(2, '0')}`;
+            const now = new Date();
+            const todayIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+            let selectedIso = filteredDate.startsWith(`${scheduleMonth}-`)
+                ? filteredDate
+                : scheduleMonth === todayIso.slice(0, 7)
+                ? todayIso
+                : `${scheduleMonth}-01`;
+
+            function renderCalendar() {
+                calendarGrid.replaceChildren();
+                const daysInMonth = new Date(calendarYear, calendarMonthIndex + 1, 0).getDate();
+                const mondayOffset = (new Date(calendarYear, calendarMonthIndex, 1).getDay() + 6) % 7;
+                const cellCount = Math.ceil((mondayOffset + daysInMonth) / 7) * 7;
+                for (let cell = 0; cell < cellCount; cell++) {
+                    const day = cell - mondayOffset + 1;
+                    const button = document.createElement('button');
+                    button.type = 'button';
+                    button.className = 'calendar-day';
+                    button.setAttribute('role', 'gridcell');
+                    if (day < 1 || day > daysInMonth) {
+                        button.disabled = true;
+                        button.classList.add('outside-month');
+                    } else {
+                        const iso = toIsoDate(day);
+                        const dayEvents = eventsByDate[iso] || [];
+                        button.setAttribute('aria-pressed', String(iso === selectedIso));
+                        button.setAttribute('aria-label', `${iso}, ${dayEvents.length} appointments`);
+                        button.classList.toggle('selected', iso === selectedIso);
+                        button.classList.toggle('is-today', iso === todayIso);
+                        const number = document.createElement('span');
+                        number.className = 'calendar-day-number';
+                        number.textContent = String(day);
+                        button.append(number);
+                        if (dayEvents.length) {
+                            const count = document.createElement('span');
+                            count.className = 'calendar-event-count';
+                            count.textContent = `${dayEvents.length} ${dayEvents.length === 1 ? 'visit' : 'visits'}`;
+                            button.append(count);
+                        }
+                        button.addEventListener('click', () => {
+                            selectedIso = iso;
+                            scheduleDateField.value = iso;
+                            renderCalendar();
+                            renderAgenda();
+                        });
+                    }
+                    calendarGrid.append(button);
+                }
+            }
+
+            function renderAgenda() {
+                const dayEvents = [...(eventsByDate[selectedIso] || [])].sort((a, b) => a.starts_at.localeCompare(b.starts_at));
+                selectedDateHeading.textContent = new Date(`${selectedIso}T12:00:00`).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+                agendaSummary.textContent = `${dayEvents.length} confirmed ${dayEvents.length === 1 ? 'appointment' : 'appointments'}`;
+                dayTimeline.replaceChildren();
+                if (!dayEvents.length) {
+                    const empty = document.createElement('p');
+                    empty.className = 'agenda-empty';
+                    empty.textContent = 'No confirmed appointments for this day.';
+                    dayTimeline.append(empty);
+                    return;
+                }
+
+                const minutesOf = (time) => {
+                    const [hours, minutes] = String(time || '00:00').split(':').map(Number);
+                    return hours * 60 + minutes;
+                };
+                const displayTime = (time) => {
+                    const [hours, minutes] = String(time || '00:00').split(':').map(Number);
+                    return `${hours % 12 || 12}:${String(minutes).padStart(2, '0')} ${hours < 12 ? 'AM' : 'PM'}`;
+                };
+                const earliestHour = Math.min(8, ...dayEvents.map(event => Math.floor(minutesOf(event.starts_at) / 60)));
+                const latestHour = Math.max(18, ...dayEvents.map(event => Math.ceil(minutesOf(event.ends_at) / 60)));
+                const startHour = Math.max(0, earliestHour);
+                const endHour = Math.min(24, latestHour);
+                const track = document.createElement('div');
+                track.className = 'timeline-track';
+                track.style.height = `${(endHour - startHour) * 60}px`;
+
+                for (let hour = startHour; hour <= endHour; hour++) {
+                    const line = document.createElement('div');
+                    line.className = 'timeline-hour';
+                    line.style.top = `${(hour - startHour) * 60}px`;
+                    line.textContent = `${String(hour % 12 || 12).padStart(2, '0')}:00 ${hour < 12 ? 'AM' : 'PM'}`;
+                    track.append(line);
+                }
+
+                const intervals = dayEvents.map(event => ({ start: minutesOf(event.starts_at), end: minutesOf(event.ends_at) }));
+                dayEvents.forEach((event, index) => {
+                    const start = minutesOf(event.starts_at);
+                    const end = Math.max(start + 30, minutesOf(event.ends_at));
+                    const overlaps = intervals.some((other, otherIndex) => otherIndex !== index && start < other.end && end > other.start);
+                    const item = document.createElement('a');
+                    item.className = `schedule-event${overlaps ? ' has-overlap' : ''}`;
+                    item.style.top = `${start - startHour * 60}px`;
+                    item.style.height = `${Math.max(44, end - start)}px`;
+                    item.href = `appointment_view.php?id=${encodeURIComponent(event.appointment_id)}`;
+                    const time = document.createElement('strong');
+                    time.textContent = `${displayTime(event.starts_at)}–${displayTime(event.ends_at)}`;
+                    const patient = document.createElement('span');
+                    patient.textContent = `${event.first_name} ${event.last_name}`;
+                    const number = document.createElement('small');
+                    number.textContent = `#${event.patient_number}${overlaps ? ' · Schedule overlap' : ''}`;
+                    item.append(time, patient, number);
+                    track.append(item);
+                });
+                dayTimeline.append(track);
+            }
+
+            document.getElementById('applySelectedDate').addEventListener('click', () => document.querySelector('.appointment-filters').requestSubmit());
+            renderCalendar();
+            renderAgenda();
+        </script>
 
         <?php if (empty($requests)): ?>
 
@@ -650,11 +1007,11 @@ $requests = $stmt->fetchAll();
                 </div>
 
                 <h2>
-                    No Pending Requests
+                    No Appointments Found
                 </h2>
 
                 <p>
-                    There are currently no appointment requests waiting for review.
+                    Try changing the filters, or check again later.
                 </p>
 
             </div>
@@ -670,7 +1027,7 @@ $requests = $stmt->fetchAll();
                     <i class="fa-solid fa-calendar-plus"></i>
 
                     <span>
-                        Pending appointment requests
+                        Appointments matching your filters
                     </span>
 
                     <span class="count">
@@ -696,9 +1053,9 @@ $requests = $stmt->fetchAll();
 
                             <th>Contact</th>
 
-                            <th>Preferred Date</th>
+                            <th>Appointment Date</th>
 
-                            <th>Preferred Time</th>
+                            <th>Appointment Time</th>
 
                             <th>Reason</th>
 
@@ -752,39 +1109,16 @@ $requests = $stmt->fetchAll();
                                 </td>
 
 
-                                <td>
+                                <?php
+                                $scheduledDate = $request['status'] === 'confirmed' && !empty($request['confirmed_date']) ? $request['confirmed_date'] : $request['preferred_date'];
+                                $scheduledStart = $request['status'] === 'confirmed' && !empty($request['confirmed_start_time']) ? $request['confirmed_start_time'] : $request['preferred_start_time'];
+                                $scheduledEnd = $request['status'] === 'confirmed' && !empty($request['confirmed_end_time']) ? $request['confirmed_end_time'] : $request['preferred_end_time'];
+                                $rowStatus = strtolower((string) $request['status']);
+                                $statusIcons = ['pending' => 'clock', 'confirmed' => 'calendar-check', 'completed' => 'circle-check', 'cancelled' => 'circle-xmark', 'no_show' => 'triangle-exclamation'];
+                                ?>
+                                <td><?= h(date('M d, Y', strtotime($scheduledDate))) ?></td>
 
-                                    <?= htmlspecialchars(
-                                        date(
-                                            'M d, Y',
-                                            strtotime(
-                                                $request['preferred_date']
-                                            )
-                                        )
-                                    ) ?>
-
-                                </td>
-
-
-                                <td>
-
-                                    <?= htmlspecialchars(
-                                        date(
-                                            'g:i A',
-                                            strtotime(
-                                                $request['preferred_start_time']
-                                            )
-                                        )
-                                        . ' - ' .
-                                        date(
-                                            'g:i A',
-                                            strtotime(
-                                                $request['preferred_end_time']
-                                            )
-                                        )
-                                    ) ?>
-
-                                </td>
+                                <td><?= h(date('g:i A', strtotime($scheduledStart)) . ' - ' . date('g:i A', strtotime($scheduledEnd))) ?></td>
 
 
                                 <td>
@@ -798,12 +1132,9 @@ $requests = $stmt->fetchAll();
 
                                 <td>
 
-                                    <span class="status">
-
-                                        <i class="fa-solid fa-clock"></i>
-
-                                        Pending
-
+                                    <span class="status status-<?= h($rowStatus) ?>">
+                                        <i class="fa-solid fa-<?= h($statusIcons[$rowStatus] ?? 'circle-question') ?>"></i>
+                                        <?= h(ucwords(str_replace('_', ' ', $rowStatus))) ?>
                                     </span>
 
                                 </td>
@@ -812,7 +1143,7 @@ $requests = $stmt->fetchAll();
                                 <td>
 
                                     <a
-                                        href="appointment_view.php?id=<?= $request['appointment_id'] ?>"
+                                        href="appointment_view.php?id=<?= h($request['appointment_id']) ?>"
                                         class="button"
                                     >
 

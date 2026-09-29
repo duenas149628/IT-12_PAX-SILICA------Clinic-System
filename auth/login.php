@@ -10,13 +10,24 @@ if (isset($_GET['registered']) && $_GET['registered'] === '1') {
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    csrf_verify();
 
-    $email = trim($_POST['email'] ?? '');
+    $emailInput = $_POST['email'] ?? '';
+    $email = is_string($emailInput) ? trim($emailInput) : '';
     $password = $_POST['password'] ?? '';
 
-    if (empty($email) || empty($password)) {
+    if (login_is_rate_limited()) {
+        http_response_code(429);
+        $message = 'Too many login attempts. Please wait 15 minutes and try again.';
+
+    } elseif (!is_string($password) || $email === '' || $password === '') {
 
         $message = 'Please enter your email and password.';
+
+    } elseif (strlen($email) > 254 || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+
+        login_record_failure();
+        $message = 'Invalid email or password.';
 
     } else {
 
@@ -32,12 +43,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($user && password_verify($password, $user['password'])) {
 
+            login_clear_failures();
             session_regenerate_id(true);
 
             $_SESSION['user_id'] = $user['user_id'];
             $_SESSION['name'] = $user['name'];
             $_SESSION['email'] = $user['email'];
             $_SESSION['role'] = $user['role'];
+            audit_log('login.success');
 
             if ($user['role'] === 'staff') {
 
@@ -50,6 +63,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         } else {
 
+            login_record_failure();
+            audit_log('login.failure', ['email_hash' => hash('sha256', strtolower($email))]);
             $message = 'Invalid email or password.';
         }
     }
@@ -459,7 +474,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <!-- LOGO -->
 
         <div class="logo">
-            🦷
+            &#129463;
         </div>
 
 
@@ -491,6 +506,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <!-- LOGIN FORM -->
 
         <form method="POST">
+<?= csrf_field() ?>
 
 
             <!-- EMAIL -->

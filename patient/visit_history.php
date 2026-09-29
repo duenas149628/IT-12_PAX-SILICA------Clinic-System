@@ -33,14 +33,19 @@ if (!$patient) {
 $patientId = $patient['patient_id'];
 $patientNumber = $patient['patient_number'] ?? 'Not assigned';
 
+$visitDate = trim($_GET['visit_date'] ?? '');
+if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $visitDate)
+    || !checkdate((int) substr($visitDate, 5, 2), (int) substr($visitDate, 8, 2), (int) substr($visitDate, 0, 4))) {
+    $visitDate = '';
+}
+
 /*
 |--------------------------------------------------------------------------
 | Get Visit History
 |--------------------------------------------------------------------------
 */
 
-$stmt = $pdo->prepare(
-    "SELECT
+$visitSql = "SELECT
         visit_records.visit_id,
         visit_records.visit_date,
         visit_records.chief_complaint,
@@ -49,13 +54,16 @@ $stmt = $pdo->prepare(
         visit_records.notes,
         visit_records.follow_up
      FROM visit_records
-     WHERE visit_records.patient_id = ?
-     ORDER BY
-        visit_records.visit_date DESC,
-        visit_records.visit_id DESC"
-);
+     WHERE visit_records.patient_id = ?";
+$visitParams = [$patientId];
+if ($visitDate !== '') {
+    $visitSql .= ' AND visit_records.visit_date = ?';
+    $visitParams[] = $visitDate;
+}
+$visitSql .= ' ORDER BY visit_records.visit_date DESC, visit_records.visit_id DESC';
+$stmt = $pdo->prepare($visitSql);
 
-$stmt->execute([$patientId]);
+$stmt->execute($visitParams);
 
 $visits = $stmt->fetchAll();
 
@@ -233,7 +241,7 @@ $visits = $stmt->fetchAll();
         }
 
         .panel {
-            padding: 30px;
+            padding: 24px;
 
             background: rgba(255, 255, 255, 0.96);
 
@@ -250,7 +258,7 @@ $visits = $stmt->fetchAll();
 
             gap: 15px;
 
-            margin-bottom: 25px;
+            margin-bottom: 18px;
         }
 
         .panel-icon {
@@ -284,15 +292,51 @@ $visits = $stmt->fetchAll();
 
         .visit-grid {
             display: grid;
+            grid-template-columns: 1fr;
+            gap: 10px;
+        }
 
-            grid-template-columns:
-                repeat(2, 1fr);
-
+        .history-layout {
+            display: grid;
+            grid-template-columns: minmax(0, 1.4fr) minmax(250px, .75fr);
+            align-items: start;
             gap: 18px;
         }
 
+        .history-list { min-width: 0; }
+        .history-title { margin: 0 0 12px; color: #167b8c; font-size: 16px; }
+
+        .date-filter {
+            display: flex;
+            align-items: end;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 14px;
+            padding: 11px;
+            border-radius: 10px;
+            background: #f5fafb;
+        }
+
+        .date-filter label { display: block; margin-bottom: 5px; color: #687a7e; font-size: 12px; font-weight: bold; }
+        .date-filter input { min-height: 38px; padding: 8px 10px; border: 1px solid #d8e4e6; border-radius: 7px; color: #45575b; font: 13px Arial, sans-serif; }
+        .date-filter button, .clear-filter { min-height: 38px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 8px 11px; border: 0; border-radius: 7px; background: #167b8c; color: white; font-size: 12px; font-weight: bold; text-decoration: none; cursor: pointer; }
+        .clear-filter { background: #e8eff0; color: #52666a; }
+        .date-filter button:hover { background: #126c79; }
+
+        .latest-card {
+            padding: 17px;
+            border: 1px solid #e0e9eb;
+            border-radius: 12px;
+            background: #f9fcfc;
+        }
+
+        .latest-label { display: inline-flex; align-items: center; gap: 6px; margin-bottom: 12px; padding: 6px 9px; border-radius: 16px; background: #e6f7fa; color: #167b8c; font-size: 11px; font-weight: bold; }
+        .latest-date { margin-bottom: 12px; color: #167b8c; font-size: 17px; font-weight: bold; }
+        .latest-card .record { margin-bottom: 12px; }
+        .latest-card .record:last-child { margin-bottom: 0; }
+
         .visit-card {
-            padding: 22px;
+            padding: 16px;
 
             background: white;
 
@@ -319,9 +363,9 @@ $visits = $stmt->fetchAll();
 
             gap: 10px;
 
-            margin-bottom: 18px;
+            margin-bottom: 12px;
 
-            padding-bottom: 15px;
+            padding-bottom: 10px;
 
             border-bottom: 1px solid #eeeeee;
         }
@@ -351,7 +395,7 @@ $visits = $stmt->fetchAll();
         }
 
         .record {
-            margin-bottom: 15px;
+            margin-bottom: 10px;
         }
 
         .record:last-child {
@@ -444,9 +488,7 @@ $visits = $stmt->fetchAll();
                 padding: 12px 20px;
             }
 
-            .visit-grid {
-                grid-template-columns: 1fr;
-            }
+            .history-layout { grid-template-columns: minmax(0, 1.2fr) minmax(220px, .8fr); }
 
         }
 
@@ -480,6 +522,8 @@ $visits = $stmt->fetchAll();
                 flex-direction: column;
                 align-items: flex-start;
             }
+
+            .history-layout { grid-template-columns: 1fr; }
 
         }
 
@@ -580,173 +624,79 @@ $visits = $stmt->fetchAll();
 
         </div>
 
-        <?php if (empty($visits)): ?>
-
-            <div class="empty">
-
-                <i class="fa-solid fa-folder-open"></i>
-
-                <h3>
-                    No Visit Records
-                </h3>
-
-                <p>
-                    You currently have no completed visit records.
-                </p>
-
-                <a
-                    href="dashboard.php"
-                    class="button"
-                >
-                    <i class="fa-solid fa-arrow-left"></i>
-                    Back to Dashboard
-                </a>
-
-            </div>
-
-        <?php else: ?>
-
-            <div class="visit-grid">
-
-                <?php foreach ($visits as $visit): ?>
-
-                    <div class="visit-card">
-
-                        <div class="visit-header">
-
-                            <div class="visit-date">
-
-                                <i class="fa-solid fa-calendar-check"></i>
-
-                                <?= htmlspecialchars(
-                                    $visit['visit_date']
-                                ) ?>
-
-                            </div>
-
-                            <span class="visit-id">
-
-                                Visit #
-                                <?= htmlspecialchars(
-                                    $visit['visit_id']
-                                ) ?>
-
-                            </span>
-
-                        </div>
-
-                        <div class="record">
-
-                            <div class="record-label">
-
-                                <i class="fa-solid fa-comment-medical"></i>
-
-                                Chief Complaint
-
-                            </div>
-
-                            <div class="record-value">
-
-                                <?= htmlspecialchars(
-                                    $visit['chief_complaint']
-                                    ?: 'Not recorded'
-                                ) ?>
-
-                            </div>
-
-                        </div>
-
-                        <div class="record">
-
-                            <div class="record-label">
-
-                                <i class="fa-solid fa-magnifying-glass"></i>
-
-                                Findings
-
-                            </div>
-
-                            <div class="record-value">
-
-                                <?= htmlspecialchars(
-                                    $visit['findings']
-                                    ?: 'Not recorded'
-                                ) ?>
-
-                            </div>
-
-                        </div>
-
-                        <div class="record">
-
-                            <div class="record-label">
-
-                                <i class="fa-solid fa-tooth"></i>
-
-                                Treatment
-
-                            </div>
-
-                            <div class="record-value">
-
-                                <?= htmlspecialchars(
-                                    $visit['treatment']
-                                    ?: 'Not recorded'
-                                ) ?>
-
-                            </div>
-
-                        </div>
-
-                        <div class="record">
-
-                            <div class="record-label">
-
-                                <i class="fa-solid fa-note-sticky"></i>
-
-                                Notes
-
-                            </div>
-
-                            <div class="record-value">
-
-                                <?= htmlspecialchars(
-                                    $visit['notes']
-                                    ?: 'Not recorded'
-                                ) ?>
-
-                            </div>
-
-                        </div>
-
-                        <div class="record">
-
-                            <div class="record-label">
-
-                                <i class="fa-solid fa-calendar-plus"></i>
-
-                                Follow-Up
-
-                            </div>
-
-                            <div class="record-value">
-
-                                <?= htmlspecialchars(
-                                    $visit['follow_up']
-                                    ?: 'Not recorded'
-                                ) ?>
-
-                            </div>
-
-                        </div>
-
+        <div class="history-layout">
+            <div class="history-list">
+                <h3 class="history-title">Current visit records <span class="count"><?= count($visits) ?></span></h3>
+                <form class="date-filter" method="GET">
+                    <div>
+                        <label for="visit-date">Filter by visit date</label>
+                        <input type="date" id="visit-date" name="visit_date" value="<?= h($visitDate) ?>">
                     </div>
+                    <button type="submit"><i class="fa-solid fa-filter" aria-hidden="true"></i>Filter</button>
+                    <?php if ($visitDate !== ''): ?>
+                        <a class="clear-filter" href="visit_history.php"><i class="fa-solid fa-xmark" aria-hidden="true"></i>Clear</a>
+                    <?php endif; ?>
+                </form>
 
-                <?php endforeach; ?>
-
+                <?php if (!$visits): ?>
+                    <div class="empty">
+                        <i class="fa-solid fa-folder-open"></i>
+                        <h3>No Visit Records</h3>
+                        <p><?= $visitDate !== '' ? 'There are no records for that date.' : 'You currently have no completed visit records.' ?></p>
+                    </div>
+                <?php else: ?>
+                    <div class="visit-grid">
+                        <?php foreach ($visits as $visit): ?>
+                            <article class="visit-card">
+                                <div class="visit-header">
+                                    <div class="visit-date"><i class="fa-solid fa-calendar-check"></i> <?= h(date('M d, Y', strtotime($visit['visit_date']))) ?></div>
+                                    <span class="visit-id">Visit #<?= h($visit['visit_id']) ?></span>
+                                </div>
+                                <div class="record">
+                                    <div class="record-label"><i class="fa-solid fa-comment-medical"></i>Chief Complaint</div>
+                                    <div class="record-value"><?= h($visit['chief_complaint'] ?: 'Not recorded') ?></div>
+                                </div>
+                                <div class="record">
+                                    <div class="record-label"><i class="fa-solid fa-magnifying-glass"></i>Findings</div>
+                                    <div class="record-value"><?= h($visit['findings'] ?: 'Not recorded') ?></div>
+                                </div>
+                                <div class="record">
+                                    <div class="record-label"><i class="fa-solid fa-tooth"></i>Treatment</div>
+                                    <div class="record-value"><?= h($visit['treatment'] ?: 'Not recorded') ?></div>
+                                </div>
+                                <div class="record">
+                                    <div class="record-label"><i class="fa-solid fa-note-sticky"></i>Notes</div>
+                                    <div class="record-value"><?= h($visit['notes'] ?: 'Not recorded') ?></div>
+                                </div>
+                                <div class="record">
+                                    <div class="record-label"><i class="fa-solid fa-calendar-plus"></i>Follow-Up</div>
+                                    <div class="record-value"><?= h($visit['follow_up'] ?: 'Not recorded') ?></div>
+                                </div>
+                            </article>
+                        <?php endforeach; ?>
+                    </div>
+                <?php endif; ?>
             </div>
 
-        <?php endif; ?>
+            <aside class="latest-card">
+                <span class="latest-label"><i class="fa-solid fa-sparkles" aria-hidden="true"></i>Latest visit</span>
+                <?php if ($visits): ?>
+                    <?php $latestVisit = $visits[0]; ?>
+                    <div class="latest-date"><i class="fa-solid fa-calendar-check" aria-hidden="true"></i> <?= h(date('M d, Y', strtotime($latestVisit['visit_date']))) ?></div>
+                    <span class="visit-id">Visit #<?= h($latestVisit['visit_id']) ?></span>
+                    <div class="record">
+                        <div class="record-label"><i class="fa-solid fa-comment-medical"></i>Chief Complaint</div>
+                        <div class="record-value"><?= h($latestVisit['chief_complaint'] ?: 'Not recorded') ?></div>
+                    </div>
+                    <div class="record">
+                        <div class="record-label"><i class="fa-solid fa-tooth"></i>Treatment</div>
+                        <div class="record-value"><?= h($latestVisit['treatment'] ?: 'Not recorded') ?></div>
+                    </div>
+                <?php else: ?>
+                    <div class="empty"><i class="fa-regular fa-calendar"></i><p>No latest visit is available for this date.</p></div>
+                <?php endif; ?>
+            </aside>
+        </div>
 
     </section>
 

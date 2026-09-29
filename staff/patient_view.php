@@ -1386,4 +1386,8 @@ $visits = $stmt->fetchAll();
 
 </body>
 
+<<<<<<< ours
 </html>
+=======
+</html>
+>>>>>>> theirs
