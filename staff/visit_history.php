@@ -115,6 +115,7 @@ $visits = $stmt->fetchAll();
 </head>
 
 <body>
+<?php require __DIR__ . '/../includes/navigation.php'; ?>
 
     <h1>Visit History</h1>
 

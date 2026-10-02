@@ -2,7 +2,6 @@
 
 require_once __DIR__ . '/../config/auth.php';
 require_once __DIR__ . '/../config/database.php';
-require_once __DIR__ . '/../config/notifications.php';
 
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'patient') {
     header('Location: ../auth/login.php');
@@ -48,24 +47,19 @@ $preferredStartTime = '';
 $preferredEndTime = '';
 $reason = '';
 
+if ($_SERVER['REQUEST_METHOD'] !== 'POST' && !empty($_SESSION['appointment_request_submitted'])) {
+    unset($_SESSION['appointment_request_submitted']);
+    $message = 'Appointment request submitted successfully.';
+    $messageType = 'success';
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_verify();
 
-    $preferredDate = trim(
-        $_POST['preferred_date'] ?? ''
-    );
-
-    $preferredStartTime = trim(
-        $_POST['preferred_start_time'] ?? ''
-    );
-
-    $preferredEndTime = trim(
-        $_POST['preferred_end_time'] ?? ''
-    );
-
-    $reason = trim(
-        $_POST['reason'] ?? ''
-    );
+    $preferredDate = request_string($_POST, 'preferred_date');
+    $preferredStartTime = request_string($_POST, 'preferred_start_time');
+    $preferredEndTime = request_string($_POST, 'preferred_end_time');
+    $reason = request_string($_POST, 'reason');
 
     $dateValue = DateTime::createFromFormat('!Y-m-d', $preferredDate);
     $dateIsValid = $dateValue && $dateValue->format('Y-m-d') === $preferredDate;
@@ -84,6 +78,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif ($dateValue < new DateTime('today')) {
 
         $message = 'Please choose today or a future date.';
+        $messageType = 'error';
+
+    } elseif ($preferredDate === date('Y-m-d') && strtotime($preferredStartTime) <= time()) {
+
+        $message = 'For today, choose a start time that has not passed.';
         $messageType = 'error';
 
     } elseif ($reason === '') {
@@ -123,15 +122,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         ]);
 
         audit_log('appointment.request.created', ['appointment_id' => (int) $pdo->lastInsertId()]);
-        notify_staff($pdo, (int) $pdo->lastInsertId(), 'appointment.request', 'New appointment request', 'A patient submitted an appointment request for review.');
-
-        $message = 'Appointment request submitted successfully.';
-        $messageType = 'success';
-
-        $preferredDate = '';
-        $preferredStartTime = '';
-        $preferredEndTime = '';
-        $reason = '';
+        $_SESSION['appointment_request_submitted'] = true;
+        header('Location: request.php');
+        exit;
     }
 }
 
@@ -606,52 +599,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 </head>
 
 <body>
-
-<header class="header">
-
-    <div class="logo">
-
-        <div class="logo-icon">
-            <i class="fa-solid fa-tooth"></i>
-        </div>
-
-        The Tooth Lounge
-
-    </div>
-
-    <nav class="nav">
-
-        <a href="dashboard.php">
-            <i class="fa-solid fa-gauge-high"></i>
-            Dashboard
-        </a>
-
-        <a href="profile.php">
-            <i class="fa-solid fa-user"></i>
-            Profile
-        </a>
-
-        <a href="appointments.php">
-            <i class="fa-solid fa-calendar-check"></i>
-            Appointments
-        </a>
-
-        <a href="visit_history.php">
-            <i class="fa-solid fa-file-medical"></i>
-            Records
-        </a>
-
-        <a
-            href="../auth/logout.php"
-            class="logout"
-        >
-            <i class="fa-solid fa-right-from-bracket"></i>
-            Logout
-        </a>
-
-    </nav>
-
-</header>
+<?php require __DIR__ . '/../includes/navigation.php'; ?>
 
 <main class="container">
 

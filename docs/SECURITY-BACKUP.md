@@ -21,8 +21,8 @@ The clinic database contains patient and appointment information. Treat each bac
    ```
 
    Replace the date and age recipient placeholders with the current date and the clinic backup encryption public key. Keep the matching decryption private key offline in a separate protected location. Do not put database passwords in the command line or in this repository. The pipeline encrypts the archive before writing it to disk.
-4. Keep daily copies for 30 days and monthly copies for 12 months, or follow the clinic's longer retention policy. Restrict backup access to authorized operators and record each restore.
-5. At least quarterly, restore a recent backup into a separate, isolated test database and verify the tables, representative patient/appointment records, and application login. A backup is not proven until a restore succeeds.
+4. Keep daily copies for at least 30 days and monthly copies for at least 12 months, unless the clinic's approved retention policy requires longer. Restrict backup access to authorized operators and record each restore.
+5. The recovery targets are a maximum 24-hour data-loss window (RPO) and a maximum 4-hour restoration time (RTO). At least quarterly, restore a recent backup into a separate, isolated test database, record the start/end time, and verify all core tables, representative patient/appointment/visit relationships, login, and role restrictions. A backup is not proven until a timed restore meets these targets.
 
 ## Recovery
 
@@ -48,4 +48,4 @@ Run the DB-independent checks from the project root:
 php tests/security_smoke.php
 ```
 
-Also verify in a local test database before release: a missing/invalid CSRF token is rejected; six failed logins from one IP result in HTTP 429 after the fifth failure; valid and invalid current passwords behave correctly on the password-change page; and password changes, login/logout, appointment changes, and patient/visit edits create audit entries. Confirm the audit file is outside the web root and can only be read by the application operator.
+Also run the release acceptance checklist in [SYSTEM-ACCEPTANCE.md](SYSTEM-ACCEPTANCE.md) against a local or staging database before release. Confirm the audit file is outside the web root and can only be read by the application operator.

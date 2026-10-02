@@ -12,7 +12,7 @@ if ($_SESSION['role'] !== 'staff') {
     die('Access denied.');
 }
 
-$patient_id = $_GET['id'] ?? null;
+$patient_id = request_string($_GET, 'id');
 
 if (!$patient_id || !ctype_digit($patient_id)) {
     die('Invalid patient.');
@@ -56,12 +56,12 @@ $message_type = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_verify();
 
-    $first_name = trim($_POST['first_name'] ?? '');
-    $last_name = trim($_POST['last_name'] ?? '');
-    $birth_date = $_POST['birth_date'] ?? '';
-    $sex = trim($_POST['sex'] ?? '');
-    $contact_number = trim($_POST['contact_number'] ?? '');
-    $address = trim($_POST['address'] ?? '');
+    $first_name = request_string($_POST, 'first_name');
+    $last_name = request_string($_POST, 'last_name');
+    $birth_date = request_string($_POST, 'birth_date');
+    $sex = request_string($_POST, 'sex');
+    $contact_number = request_string($_POST, 'contact_number');
+    $address = request_string($_POST, 'address');
 
     if ($first_name === '' || $last_name === '') {
 
@@ -225,6 +225,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 </head>
 
 <body>
+<?php require __DIR__ . '/../includes/navigation.php'; ?>
 
     <h1>
         Edit Patient Information

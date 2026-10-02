@@ -8,8 +8,8 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'staff') {
     exit;
 }
 
-$search = trim($_GET['search'] ?? '');
-$visitDate = trim($_GET['visit_date'] ?? '');
+$search = request_string($_GET, 'search');
+$visitDate = request_string($_GET, 'visit_date');
 if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $visitDate) || !checkdate((int) substr($visitDate, 5, 2), (int) substr($visitDate, 8, 2), (int) substr($visitDate, 0, 4))) {
     $visitDate = '';
 }
@@ -1026,6 +1026,7 @@ $visits = $stmt->fetchAll();
 
 
 <body>
+<?php require __DIR__ . '/../includes/navigation.php'; ?>
 
 
 <!-- =========================================================

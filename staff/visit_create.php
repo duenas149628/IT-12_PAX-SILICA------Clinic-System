@@ -12,7 +12,7 @@ if ($_SESSION['role'] !== 'staff') {
     die('Access denied.');
 }
 
-$appointment_id = $_GET['id'] ?? null;
+$appointment_id = request_string($_GET, 'id');
 
 if (!$appointment_id || !ctype_digit($appointment_id)) {
     die('Invalid appointment.');
@@ -98,11 +98,11 @@ $message_type = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_verify();
 
-    $chief_complaint = trim($_POST['chief_complaint'] ?? '');
-    $findings = trim($_POST['findings'] ?? '');
-    $treatment = trim($_POST['treatment'] ?? '');
-    $notes = trim($_POST['notes'] ?? '');
-    $follow_up = trim($_POST['follow_up'] ?? '');
+    $chief_complaint = request_string($_POST, 'chief_complaint');
+    $findings = request_string($_POST, 'findings');
+    $treatment = request_string($_POST, 'treatment');
+    $notes = request_string($_POST, 'notes');
+    $follow_up = request_string($_POST, 'follow_up');
 
     if (
         empty($chief_complaint) &&
@@ -260,6 +260,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 </head>
 
 <body>
+<?php require __DIR__ . '/../includes/navigation.php'; ?>
 
     <header class="header">
         <a class="logo" href="dashboard.php">

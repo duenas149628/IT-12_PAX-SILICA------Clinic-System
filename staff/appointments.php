@@ -56,6 +56,7 @@ $sql = "SELECT
         appointments.confirmed_end_time,
         appointments.reason,
         appointments.status,
+        appointments.created_at,
         patients.patient_number,
         patients.first_name,
         patients.last_name,
@@ -64,8 +65,7 @@ $sql = "SELECT
      INNER JOIN patients
         ON appointments.patient_id = patients.patient_id
      " . ($where ? 'WHERE ' . implode(' AND ', $where) : '') . "
-     ORDER BY COALESCE(appointments.confirmed_date, appointments.preferred_date) ASC,
-              COALESCE(appointments.confirmed_start_time, appointments.preferred_start_time) ASC";
+     ORDER BY appointments.created_at DESC, appointments.appointment_id DESC";
 $stmt = $pdo->prepare($sql);
 $stmt->execute($params);
 
@@ -97,6 +97,18 @@ $calendarStmt = $pdo->prepare(
 );
 $calendarStmt->execute([$monthStart, $nextMonthStart]);
 $calendarEvents = $calendarStmt->fetchAll();
+$pendingCalendarStmt = $pdo->prepare(
+    "SELECT preferred_date AS event_date, COUNT(*) AS pending_count
+     FROM appointments
+     WHERE status = 'pending'
+       AND preferred_date >= ? AND preferred_date < ?
+     GROUP BY preferred_date"
+);
+$pendingCalendarStmt->execute([$monthStart, $nextMonthStart]);
+$calendarPendingCounts = [];
+foreach ($pendingCalendarStmt->fetchAll() as $pendingDay) {
+    $calendarPendingCounts[$pendingDay['event_date']] = (int) $pendingDay['pending_count'];
+}
 
 ?>
 
@@ -461,13 +473,28 @@ $calendarEvents = $calendarStmt->fetchAll();
             gap: 14px;
             margin: 18px 0;
         }
+        .appointments-layout {
+            display: grid;
+            grid-template-columns: 250px minmax(0, 1fr);
+            align-items: start;
+            gap: 22px;
+        }
+        .appointments-sidebar {
+            position: sticky;
+            top: 22px;
+        }
+        .appointments-content { min-width: 0; }
         .appointment-filters {
-            align-items: end;
+            grid-template-columns: 1fr;
+            align-items: stretch;
+            gap: 16px;
+            margin: 0;
             padding: 20px;
             background: rgba(255,255,255,.97);
             border-radius: 14px;
             box-shadow: 0 8px 25px rgba(0,0,0,.12);
         }
+        .appointment-filters h2 { margin: 0; color: #174b55; font-size: 18px; }
         .appointment-filters label { display:block; margin-bottom:6px; font-size:13px; font-weight:600; color:#40545a; }
         .appointment-filters .form-control, .appointment-filters .form-select { min-height:44px; }
         .quick-stat {
@@ -480,6 +507,9 @@ $calendarEvents = $calendarStmt->fetchAll();
         .quick-stat strong { font-size:24px; }
         .table-container { -webkit-overflow-scrolling:touch; }
         tbody tr:hover { background:#f4fbfc; }
+        .table-actions { display:flex; justify-content:center; margin-top:16px; }
+        .show-more-button { border-color:#167b8c; background:#167b8c; color:#fff; }
+        .show-more-button:hover { border-color:#126c79; background:#126c79; color:#fff; }
 
         .schedule-panel {
             margin:18px 0 24px; padding:22px;
@@ -488,22 +518,28 @@ $calendarEvents = $calendarStmt->fetchAll();
         }
         .calendar-toolbar,.agenda-heading { display:flex; align-items:center; justify-content:space-between; gap:14px; }
         .calendar-toolbar h2 { margin:0 0 5px; color:#174b55; font-size:22px; }
-        .calendar-toolbar p,.agenda-heading p { margin:0; color:#66777b; font-size:13px; }
-        .calendar-navigation { display:flex; gap:7px; }
+        .calendar-toolbar p,.agenda-heading p { margin:0; color:#66777b; font-size:13px; line-height:1.45; }
+        .calendar-toolbar > div:first-child { min-width:0; }
+        .calendar-navigation { display:flex; gap:7px; flex:0 0 auto; }
         .schedule-layout { display:grid; grid-template-columns:minmax(0,1.25fr) minmax(310px,.75fr); gap:22px; margin-top:20px; }
         .calendar-weekdays,.calendar-grid { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); }
         .calendar-weekdays span { padding:8px 3px; color:#64777b; text-align:center; font-size:12px; font-weight:700; }
-        .calendar-day { display:flex; flex-direction:column; align-items:flex-start; gap:6px; min-height:72px; padding:9px; border:1px solid #e4edef; background:#fff; color:#29484f; text-align:left; }
+        .calendar-day { display:flex; flex-direction:column; align-items:flex-start; gap:4px; min-width:0; min-height:72px; overflow:hidden; padding:9px; border:1px solid #e4edef; background:#fff; color:#29484f; text-align:left; }
         .calendar-day:not(:disabled) { cursor:pointer; }
         .calendar-day:not(:disabled):hover { background:#f0fafb; border-color:#8ccbd3; }
         .calendar-day:disabled { background:#f8fafb; opacity:.55; }
         .calendar-day.selected { background:#e8f7f9; border:2px solid #168ca0; padding:8px; }
+        .calendar-day.has-both-counts { min-height:88px; }
         .calendar-day.is-today .calendar-day-number { color:#087c8e; font-weight:800; }
         .calendar-day-number { font-size:14px; }
-        .calendar-event-count { padding:3px 6px; border-radius:20px; background:#dff3ec; color:#176b45; font-size:10px; font-weight:700; }
+        .calendar-event-count,.calendar-pending-count { display:inline-flex; align-items:center; max-width:100%; overflow:hidden; padding:2px 5px; border-radius:20px; font-size:9px; font-weight:700; line-height:1.15; white-space:nowrap; text-overflow:ellipsis; }
+        .calendar-event-count { background:#dff3ec; color:#176b45; }
+        .calendar-pending-count { background:#fff0c2; color:#775000; }
         .day-agenda { min-width:0; padding:15px; border:1px solid #e4edef; border-radius:12px; background:#fbfdfd; }
         .agenda-heading { align-items:flex-start; margin-bottom:13px; }
-        .agenda-heading h3 { margin:0 0 4px; color:#174b55; font-size:17px; }
+        .agenda-heading > div { min-width:0; }
+        .agenda-heading h3 { margin:0 0 5px; color:#174b55; font-size:17px; }
+        .agenda-heading p { max-width:240px; }
         .timeline { max-height:520px; overflow:auto; padding:4px 2px; }
         .timeline-track { position:relative; min-width:240px; margin-left:58px; border-left:1px solid #dbe7e9; }
         .timeline-hour { position:absolute; left:-58px; width:50px; height:1px; border-top:1px solid #e4edef; color:#728387; font-size:10px; transform:translateY(-50%); }
@@ -511,7 +547,7 @@ $calendarEvents = $calendarStmt->fetchAll();
         .schedule-event:hover { z-index:2; color:#103d31; background:#d5efe4; }
         .schedule-event span,.schedule-event small { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
         .schedule-event.has-overlap { border-left-color:#c53d46; background:#ffeded; color:#8f2525; }
-        .agenda-empty { margin:0; padding:20px 12px; color:#718084; background:white; border-radius:8px; text-align:center; }
+        .agenda-empty { display:grid; min-height:92px; place-items:center; margin:0; padding:18px 12px; color:#718084; background:white; border-radius:8px; text-align:center; line-height:1.45; }
 
         /* MANAGE BUTTON */
 
@@ -655,6 +691,18 @@ $calendarEvents = $calendarStmt->fetchAll();
             .container {
                 max-width: 94%;
             }
+
+            .appointments-layout {
+                grid-template-columns: 1fr;
+            }
+
+            .appointments-sidebar {
+                position: static;
+            }
+
+            .appointment-filters {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
         }
 
         @media (max-width: 600px) {
@@ -663,6 +711,7 @@ $calendarEvents = $calendarStmt->fetchAll();
             .nav { width:100%; }
             .container { width:100%; max-width:100%; padding:18px 14px; }
             .appointment-filters { padding:14px; grid-template-columns:1fr; }
+            .calendar-event-count,.calendar-pending-count { padding:2px 3px; font-size:8px; }
             .schedule-panel { padding:14px; }
             .calendar-toolbar { align-items:flex-start; flex-direction:column; }
             .schedule-layout { grid-template-columns:1fr; }
@@ -693,6 +742,7 @@ $calendarEvents = $calendarStmt->fetchAll();
 
 
 <body>
+<?php require __DIR__ . '/../includes/navigation.php'; ?>
 
 
     <!-- HEADER -->
@@ -796,6 +846,36 @@ $calendarEvents = $calendarStmt->fetchAll();
         </section>
 
 
+        <div class="appointments-layout">
+            <aside class="appointments-sidebar" aria-label="Appointment filters">
+                <a class="btn btn-primary d-grid mb-3" href="appointment_create.php"><i class="fa-solid fa-calendar-plus me-1"></i> New appointment</a>
+                <form class="appointment-filters" method="GET">
+                    <h2><i class="fa-solid fa-filter"></i> Filters</h2>
+                    <div>
+                        <label for="status">Status</label>
+                        <select class="form-select" name="status" id="status">
+                            <option value="all" <?= $statusFilter === 'all' ? 'selected' : '' ?>>All statuses</option>
+                            <?php foreach ($statusOptions as $option): ?>
+                                <option value="<?= h($option) ?>" <?= $statusFilter === $option ? 'selected' : '' ?>><?= h(ucwords(str_replace('_', ' ', $option))) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="date">Appointment date</label>
+                        <input class="form-control" type="date" name="date" id="date" value="<?= h($dateFilter) ?>">
+                    </div>
+                    <div>
+                        <label for="search">Patient or number</label>
+                        <input class="form-control" type="search" name="search" id="search" maxlength="100" value="<?= h($search) ?>" placeholder="Search patients">
+                    </div>
+                    <div class="d-grid gap-2">
+                        <button class="btn btn-primary" type="submit"><i class="fa-solid fa-filter"></i> Filter</button>
+                        <a class="btn btn-outline-secondary" href="appointments.php">Clear</a>
+                    </div>
+                </form>
+            </aside>
+
+            <div class="appointments-content">
         <div class="quick-stats">
             <a class="quick-stat" href="appointments.php?status=pending">
                 <span><i class="fa-regular fa-clock"></i> Pending requests</span>
@@ -807,30 +887,6 @@ $calendarEvents = $calendarStmt->fetchAll();
             </a>
         </div>
 
-        <form class="appointment-filters" method="GET">
-            <div>
-                <label for="status">Status</label>
-                <select class="form-select" name="status" id="status">
-                    <option value="all" <?= $statusFilter === 'all' ? 'selected' : '' ?>>All statuses</option>
-                    <?php foreach ($statusOptions as $option): ?>
-                        <option value="<?= h($option) ?>" <?= $statusFilter === $option ? 'selected' : '' ?>><?= h(ucwords(str_replace('_', ' ', $option))) ?></option>
-                    <?php endforeach; ?>
-                </select>
-            </div>
-            <div>
-                <label for="date">Appointment date</label>
-                <input class="form-control" type="date" name="date" id="date" value="<?= h($dateFilter) ?>">
-            </div>
-            <div>
-                <label for="search">Patient or number</label>
-                <input class="form-control" type="search" name="search" id="search" maxlength="100" value="<?= h($search) ?>" placeholder="Search patients">
-            </div>
-            <div class="d-flex gap-2">
-                <button class="btn btn-primary" type="submit"><i class="fa-solid fa-filter"></i> Filter</button>
-                <a class="btn btn-outline-secondary" href="appointments.php">Clear</a>
-            </div>
-        </form>
-
         <?php
         $previousMonth = (clone $calendarMonth)->modify('-1 month')->format('Y-m');
         $followingMonth = (clone $calendarMonth)->modify('+1 month')->format('Y-m');
@@ -840,7 +896,7 @@ $calendarEvents = $calendarStmt->fetchAll();
             <div class="calendar-toolbar">
                 <div>
                     <h2 id="calendarTitle">Visual schedule</h2>
-                    <p>Confirmed appointments for <?= h($calendarMonth->format('F Y')) ?>. Select a day to view its timeline.</p>
+                    <p><?= h($calendarMonth->format('F Y')) ?> · Green: confirmed. Amber: pending requests needing attention. Select a day for its timeline.</p>
                 </div>
                 <div class="calendar-navigation">
                     <a class="btn btn-outline-secondary" aria-label="Previous month" href="?month=<?= h($previousMonth) ?>"><i class="fa-solid fa-chevron-left"></i></a>
@@ -858,7 +914,6 @@ $calendarEvents = $calendarStmt->fetchAll();
                 <aside class="day-agenda" aria-live="polite">
                     <div class="agenda-heading">
                         <div><h3 id="selectedDateHeading"></h3><p id="agendaSummary"></p></div>
-                        <button class="btn btn-sm btn-outline-primary" type="button" id="applySelectedDate">Filter list</button>
                     </div>
                     <div class="timeline" id="dayTimeline"></div>
                 </aside>
@@ -868,11 +923,11 @@ $calendarEvents = $calendarStmt->fetchAll();
             const scheduleMonth = <?= json_encode($calendarMonth->format('Y-m')) ?>;
             const filteredDate = <?= json_encode($dateFilter) ?>;
             const scheduleEvents = <?= json_encode($calendarEvents, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+            const pendingCountsByDate = <?= json_encode($calendarPendingCounts, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
             const monthParts = scheduleMonth.split('-').map(Number);
             const calendarYear = monthParts[0];
             const calendarMonthIndex = monthParts[1] - 1;
             const calendarGrid = document.getElementById('calendarGrid');
-            const scheduleDateField = document.getElementById('date');
             const selectedDateHeading = document.getElementById('selectedDateHeading');
             const agendaSummary = document.getElementById('agendaSummary');
             const dayTimeline = document.getElementById('dayTimeline');
@@ -906,8 +961,13 @@ $calendarEvents = $calendarStmt->fetchAll();
                     } else {
                         const iso = toIsoDate(day);
                         const dayEvents = eventsByDate[iso] || [];
+                        const pendingCount = Number(pendingCountsByDate[iso] || 0);
+                        const compactLabels = window.matchMedia('(max-width: 600px)').matches;
+                        if (dayEvents.length > 0 && pendingCount > 0) {
+                            button.classList.add('has-both-counts');
+                        }
                         button.setAttribute('aria-pressed', String(iso === selectedIso));
-                        button.setAttribute('aria-label', `${iso}, ${dayEvents.length} appointments`);
+                        button.setAttribute('aria-label', `${iso}, ${dayEvents.length} confirmed ${dayEvents.length === 1 ? 'appointment' : 'appointments'}, ${pendingCount} pending ${pendingCount === 1 ? 'request' : 'requests'} requiring attention`);
                         button.classList.toggle('selected', iso === selectedIso);
                         button.classList.toggle('is-today', iso === todayIso);
                         const number = document.createElement('span');
@@ -917,12 +977,19 @@ $calendarEvents = $calendarStmt->fetchAll();
                         if (dayEvents.length) {
                             const count = document.createElement('span');
                             count.className = 'calendar-event-count';
-                            count.textContent = `${dayEvents.length} ${dayEvents.length === 1 ? 'visit' : 'visits'}`;
+                            count.textContent = `${dayEvents.length} appt`;
+                            count.title = `${dayEvents.length} confirmed ${dayEvents.length === 1 ? 'appointment' : 'appointments'}`;
                             button.append(count);
+                        }
+                        if (pendingCount > 0) {
+                            const pending = document.createElement('span');
+                            pending.className = 'calendar-pending-count';
+                            pending.textContent = `${pendingCount} ${compactLabels ? 'pend.' : 'pending'}`;
+                            pending.title = `${pendingCount} pending appointment ${pendingCount === 1 ? 'request' : 'requests'} requiring staff attention`;
+                            button.append(pending);
                         }
                         button.addEventListener('click', () => {
                             selectedIso = iso;
-                            scheduleDateField.value = iso;
                             renderCalendar();
                             renderAgenda();
                         });
@@ -933,8 +1000,9 @@ $calendarEvents = $calendarStmt->fetchAll();
 
             function renderAgenda() {
                 const dayEvents = [...(eventsByDate[selectedIso] || [])].sort((a, b) => a.starts_at.localeCompare(b.starts_at));
+                const pendingCount = Number(pendingCountsByDate[selectedIso] || 0);
                 selectedDateHeading.textContent = new Date(`${selectedIso}T12:00:00`).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
-                agendaSummary.textContent = `${dayEvents.length} confirmed ${dayEvents.length === 1 ? 'appointment' : 'appointments'}`;
+                agendaSummary.textContent = `${dayEvents.length} confirmed ${dayEvents.length === 1 ? 'appointment' : 'appointments'}${pendingCount ? ` · ${pendingCount} pending ${pendingCount === 1 ? 'request' : 'requests'} requiring attention` : ''}`;
                 dayTimeline.replaceChildren();
                 if (!dayEvents.length) {
                     const empty = document.createElement('p');
@@ -990,7 +1058,18 @@ $calendarEvents = $calendarStmt->fetchAll();
                 dayTimeline.append(track);
             }
 
-            document.getElementById('applySelectedDate').addEventListener('click', () => document.querySelector('.appointment-filters').requestSubmit());
+            document.addEventListener('click', (event) => {
+                const toggleAppointmentRows = event.target.closest('#toggleAppointmentRows');
+                if (!toggleAppointmentRows) return;
+                const extraAppointmentRows = document.querySelectorAll('[data-extra-appointment]');
+                const expanded = toggleAppointmentRows.getAttribute('aria-expanded') === 'true';
+                extraAppointmentRows.forEach(row => { row.hidden = expanded; });
+                toggleAppointmentRows.setAttribute('aria-expanded', String(!expanded));
+                toggleAppointmentRows.textContent = expanded
+                    ? `Show more (${extraAppointmentRows.length})`
+                    : 'Show less';
+            });
+            window.addEventListener('resize', renderCalendar);
             renderCalendar();
             renderAgenda();
         </script>
@@ -1070,9 +1149,9 @@ $calendarEvents = $calendarStmt->fetchAll();
 
                     <tbody>
 
-                        <?php foreach ($requests as $request): ?>
+                        <?php $appointmentRow = 0; foreach ($requests as $request): ?>
 
-                            <tr>
+                            <tr<?= $appointmentRow >= 5 ? ' hidden data-extra-appointment' : '' ?>>
 
                                 <td>
 
@@ -1157,7 +1236,7 @@ $calendarEvents = $calendarStmt->fetchAll();
 
                             </tr>
 
-                        <?php endforeach; ?>
+                        <?php $appointmentRow++; endforeach; ?>
 
                     </tbody>
 
@@ -1165,8 +1244,19 @@ $calendarEvents = $calendarStmt->fetchAll();
 
             </div>
 
+            <?php if (count($requests) > 5): ?>
+                <div class="table-actions">
+                    <button class="btn show-more-button" type="button" id="toggleAppointmentRows" aria-expanded="false">
+                        Show more (<?= h(count($requests) - 5) ?>)
+                    </button>
+                </div>
+            <?php endif; ?>
+
 
         <?php endif; ?>
+
+            </div>
+        </div>
 
 
         <div class="bottom-navigation">

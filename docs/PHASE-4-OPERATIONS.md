@@ -1,22 +1,14 @@
 # Phase 4 operations
 
-## Enable notifications and reminders
+## Audit and activity log
 
-Apply the schema migration once before using dashboards or changing appointment status:
+The staff activity log is available at `/staff/activity_log.php`.
 
-```sh
-mysql --defaults-extra-file=/etc/tooth-lounge/mysql.cnf tooth-lounge < database/migrations/001_notifications_and_reminders.sql
-```
+## Patient and staff account setup
 
-The app creates in-system notifications when patients submit requests and when staff update an appointment. Users can review and mark their notifications read at `/notifications.php`. The audit/activity log is available to staff at `/staff/activity_log.php`.
+Apply `database/migrations/001_password_change_required.sql` before deploying the account setup pages. Patients can self-register or be registered by staff; both paths create a user login and linked patient record. Staff-created patient and staff accounts use the temporary password `1234`, display it after creation, and require the account holder to replace it at first login. Create one staff login per staff member so appointment and record changes can be attributed to an individual account.
 
-Appointment reminders are in-system notifications for confirmed appointments scheduled the following day. They are deduplicated per appointment and scheduled date. Configure the server timezone to the clinic's timezone and run the job daily, for example at 8:00 AM:
-
-```cron
-0 8 * * * cd /var/www/tooth-lounge && set -a && . /etc/tooth-lounge/runtime.env && set +a && /usr/bin/php scripts/send-appointment-reminders.php >> /var/log/tooth-lounge/reminders.log 2>&1
-```
-
-Keep `runtime.env` outside the repository and web root with permissions restricted to the service operator. It must provide `APP_ENV=production`, `DB_HOST`, `DB_NAME`, `DB_USER`, and `DB_PASSWORD`. The reminder job writes to the configured `AUDIT_LOG_PATH`. It does not send email or SMS.
+Staff can enter appointment requests received by phone, text, Facebook, or another offline channel from the **New appointment** navigation link. These requests are saved as pending and continue through the normal review and schedule-confirmation workflow.
 
 ## Automated encrypted database backups
 

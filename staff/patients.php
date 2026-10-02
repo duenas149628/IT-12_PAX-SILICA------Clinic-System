@@ -12,7 +12,7 @@ if ($_SESSION['role'] !== 'staff') {
     die('Access denied.');
 }
 
-$search = trim($_GET['search'] ?? '');
+$search = request_string($_GET, 'search');
 
 /*
 |--------------------------------------------------------------------------
@@ -321,6 +321,60 @@ $patients = $stmt->fetchAll();
             font-size: 15px;
 
             opacity: 0.9;
+        }
+
+
+        .register-patient-button {
+
+            display: inline-flex;
+
+            align-items: center;
+
+            justify-content: center;
+
+            gap: 8px;
+
+            margin-top: 15px;
+
+            padding: 11px 16px;
+
+            border: 1px solid rgba(255, 255, 255, 0.22);
+
+            border-radius: 8px;
+
+            background: #167b8c;
+
+            color: #fff;
+
+            font-size: 14px;
+
+            font-weight: 600;
+
+            text-decoration: none;
+
+            box-shadow: 0 4px 12px rgba(8, 57, 68, 0.2);
+
+            transition: background 0.2s, transform 0.2s, box-shadow 0.2s;
+        }
+
+
+        .register-patient-button:hover {
+
+            background: #126c79;
+
+            color: #fff;
+
+            transform: translateY(-1px);
+
+            box-shadow: 0 6px 15px rgba(8, 57, 68, 0.28);
+        }
+
+
+        .register-patient-button:focus-visible {
+
+            outline: 3px solid #fff;
+
+            outline-offset: 3px;
         }
 
 
@@ -895,6 +949,7 @@ $patients = $stmt->fetchAll();
 
 
 <body>
+<?php require __DIR__ . '/../includes/navigation.php'; ?>
 
 
     <!-- ==============================
@@ -995,6 +1050,11 @@ $patients = $stmt->fetchAll();
             <p>
                 Search and view registered patient records.
             </p>
+
+            <a class="register-patient-button" href="patient_create.php">
+                <i class="fa-solid fa-user-plus" aria-hidden="true"></i>
+                Register Patient
+            </a>
 
         </section>
 

@@ -32,7 +32,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
 
         $stmt = $pdo->prepare(
-            "SELECT user_id, name, email, password, role
+            "SELECT user_id, name, email, password, role, must_change_password
              FROM users
              WHERE email = ?"
         );
@@ -50,7 +50,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $_SESSION['name'] = $user['name'];
             $_SESSION['email'] = $user['email'];
             $_SESSION['role'] = $user['role'];
+            $_SESSION['must_change_password'] = (bool) $user['must_change_password'];
             audit_log('login.success');
+
+            if ($_SESSION['must_change_password']) {
+                header('Location: password_change.php');
+                exit;
+            }
 
             if ($user['role'] === 'staff') {
 
@@ -155,27 +161,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
            LOGO
         ========================= */
 
-        .logo {
-
-            width: 70px;
-
-            height: 70px;
-
-            margin: 0 auto 15px;
-
-            display: flex;
-
-            justify-content: center;
-
-            align-items: center;
-
-            background: #e6f7fa;
-
-            border-radius: 50%;
-
-            color: #167b8c;
-
-            font-size: 35px;
+        .login-logo {
+            display:block;
+            width:min(100%, 280px);
+            height:auto;
+            margin:0 auto 18px;
         }
 
 
@@ -473,21 +463,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         <!-- LOGO -->
 
-        <div class="logo">
-            &#129463;
-        </div>
+        <img class="login-logo" src="../assets/tooth-lounge-logo.png" alt="The Tooth Lounge Co.">
 
 
         <!-- TITLE -->
 
         <h1>
-            The Tooth Lounge
-        </h1>
-
-
-        <h2>
             Welcome Back
-        </h2>
+        </h1>
 
 
         <!-- MESSAGE -->

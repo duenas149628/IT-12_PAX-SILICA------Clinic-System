@@ -8,7 +8,7 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'staff') {
     exit;
 }
 
-$visit_id = $_GET['id'] ?? null;
+$visit_id = request_string($_GET, 'id');
 
 if (!$visit_id || !ctype_digit($visit_id)) {
     die('Invalid visit record.');
@@ -916,6 +916,7 @@ function formatTime(?string $time): string
 
 
 <body>
+<?php require __DIR__ . '/../includes/navigation.php'; ?>
 
 
 <!-- =========================================================

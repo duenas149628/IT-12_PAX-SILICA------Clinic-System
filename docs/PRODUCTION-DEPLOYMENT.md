@@ -2,6 +2,14 @@
 
 ## Application configuration
 
+Before deploying the account changes, apply the one-time migration to the target database:
+
+```sh
+mysql --defaults-extra-file=/etc/tooth-lounge/mysql.cnf tooth-lounge < database/migrations/001_password_change_required.sql
+```
+
+The migration adds `users.must_change_password`. Existing accounts remain usable; new accounts created by staff receive the temporary password `1234` and must change it before opening protected pages. Create and verify an individual login for each staff member, then rotate or retire any shared staff credentials through the clinic's account process.
+
 Run PHP 8.1+ with PDO MySQL and keep the project directory owned by the deploy operator. The PHP worker should have read access to application files and write access only to its session directory and the configured audit-log file. Keep database credentials outside the repository and web root.
 
 Set these environment variables in the PHP-FPM pool, Apache service environment, or deployment secret manager. PHP-FPM commonly clears the worker environment, so explicitly pass the required values in the pool config; see [php-fpm-pool.env.example](/C:/laragon/www/tooth-lounge/deploy/php-fpm-pool.env.example). Keep the real DB password in a secret manager or protected service configuration, not this example file:

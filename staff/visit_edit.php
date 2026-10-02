@@ -12,7 +12,7 @@ if ($_SESSION['role'] !== 'staff') {
     die('Access denied.');
 }
 
-$visit_id = $_GET['id'] ?? null;
+$visit_id = request_string($_GET, 'id');
 
 if (!$visit_id || !ctype_digit($visit_id)) {
     die('Invalid visit record.');
@@ -64,11 +64,11 @@ $message_type = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_verify();
 
-    $chief_complaint = trim($_POST['chief_complaint'] ?? '');
-    $findings = trim($_POST['findings'] ?? '');
-    $treatment = trim($_POST['treatment'] ?? '');
-    $notes = trim($_POST['notes'] ?? '');
-    $follow_up = trim($_POST['follow_up'] ?? '');
+    $chief_complaint = request_string($_POST, 'chief_complaint');
+    $findings = request_string($_POST, 'findings');
+    $treatment = request_string($_POST, 'treatment');
+    $notes = request_string($_POST, 'notes');
+    $follow_up = request_string($_POST, 'follow_up');
 
     if (
         empty($chief_complaint) &&
@@ -603,6 +603,7 @@ function formatDate($date)
 </head>
 
 <body>
+<?php require __DIR__ . '/../includes/navigation.php'; ?>
 
 <div class="page">
 

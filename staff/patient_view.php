@@ -12,7 +12,7 @@ if ($_SESSION['role'] !== 'staff') {
     die('Access denied.');
 }
 
-$search = trim($_GET['search'] ?? '');
+$search = request_string($_GET, 'search');
 
 /*
 |--------------------------------------------------------------------------
@@ -879,6 +879,7 @@ $visits = $stmt->fetchAll();
 
 
 <body>
+<?php require __DIR__ . '/../includes/navigation.php'; ?>
 
 
 <!-- HEADER -->
@@ -1385,9 +1386,3 @@ $visits = $stmt->fetchAll();
 
 
 </body>
-
-<<<<<<< ours
-</html>
-=======
-</html>
->>>>>>> theirs

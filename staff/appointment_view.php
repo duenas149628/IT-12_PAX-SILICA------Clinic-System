@@ -2,7 +2,6 @@
 
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/auth.php';
-require_once __DIR__ . '/../config/notifications.php';
 
 if (!isset($_SESSION['user_id'])) {
     header('Location: ../auth/login.php');
@@ -13,7 +12,7 @@ if ($_SESSION['role'] !== 'staff') {
     die('Access denied.');
 }
 
-$appointment_id = $_GET['id'] ?? null;
+$appointment_id = request_string($_GET, 'id');
 
 if (!$appointment_id || !ctype_digit($appointment_id)) {
     die('Invalid appointment.');
@@ -91,7 +90,7 @@ $conflict = null;
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_verify();
 
-    $action = $_POST['action'] ?? '';
+    $action = request_string($_POST, 'action');
     audit_log('appointment.action.submitted', [
         'appointment_id' => (int) $appointment_id,
         'action' => is_string($action) ? preg_replace('/[^a-z_]/i', '', $action) : 'invalid',
@@ -152,9 +151,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     elseif ($action === 'confirm') {
 
-        $confirmed_date = $_POST['confirmed_date'] ?? '';
-        $confirmed_start_time = $_POST['confirmed_start_time'] ?? '';
-        $confirmed_end_time = $_POST['confirmed_end_time'] ?? '';
+        $confirmed_date = request_string($_POST, 'confirmed_date');
+        $confirmed_start_time = request_string($_POST, 'confirmed_start_time');
+        $confirmed_end_time = request_string($_POST, 'confirmed_end_time');
 
         if (
             empty($confirmed_date) ||
@@ -215,9 +214,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     elseif ($action === 'reschedule') {
 
-        $confirmed_date = $_POST['confirmed_date'] ?? '';
-        $confirmed_start_time = $_POST['confirmed_start_time'] ?? '';
-        $confirmed_end_time = $_POST['confirmed_end_time'] ?? '';
+        $confirmed_date = request_string($_POST, 'confirmed_date');
+        $confirmed_start_time = request_string($_POST, 'confirmed_start_time');
+        $confirmed_end_time = request_string($_POST, 'confirmed_end_time');
 
         if (
             empty($confirmed_date) ||
@@ -416,9 +415,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
-    if ($message_type === 'success') {
-        notify_patient_of_appointment($pdo, $appointment_id);
-    }
 }
 
 
@@ -1235,6 +1231,7 @@ function formatStatus(string $status): string
 </head>
 
 <body>
+<?php require __DIR__ . '/../includes/navigation.php'; ?>
 
 
 <!-- =========================================================

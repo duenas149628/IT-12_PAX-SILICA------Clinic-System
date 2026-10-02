@@ -1,5 +1,7 @@
 <?php
 
+const STAFF_ISSUED_TEMPORARY_PASSWORD = '1234';
+
 $appEnvironment = strtolower((string) (getenv('APP_ENV') ?: 'development'));
 $isProduction = $appEnvironment === 'production';
 $requestIsHttps = !empty($_SERVER['HTTPS']) && strtolower((string) $_SERVER['HTTPS']) !== 'off';
@@ -58,6 +60,18 @@ if (session_status() === PHP_SESSION_NONE) {
     }
 }
 
+if (PHP_SAPI !== 'cli' && !empty($_SESSION['must_change_password'])) {
+    $currentScript = basename((string) ($_SERVER['SCRIPT_NAME'] ?? ''));
+    if (!in_array($currentScript, ['password_change.php', 'logout.php'], true)) {
+        $currentDirectory = basename(dirname((string) ($_SERVER['SCRIPT_NAME'] ?? '')));
+        $passwordChangePath = $currentDirectory === 'auth'
+            ? 'password_change.php'
+            : '../auth/password_change.php';
+        header('Location: ' . $passwordChangePath);
+        exit;
+    }
+}
+
 function csrf_token(): string
 {
     if (empty($_SESSION['csrf_token'])) {
@@ -84,6 +98,13 @@ function csrf_verify(): void
 function h($value): string
 {
     return htmlspecialchars((string) $value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+}
+
+/** Read untrusted form/query values without allowing array input to cause TypeErrors. */
+function request_string(array $source, string $key): string
+{
+    $value = $source[$key] ?? '';
+    return is_string($value) ? trim($value) : '';
 }
 
 function audit_log(string $event, array $details = []): void

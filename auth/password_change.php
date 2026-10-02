@@ -35,9 +35,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $message = 'The current password is incorrect.';
         } else {
             $hash = password_hash($new, PASSWORD_DEFAULT);
-            $stmt = $pdo->prepare('UPDATE users SET password = ? WHERE user_id = ?');
+            $stmt = $pdo->prepare('UPDATE users SET password = ?, must_change_password = 0 WHERE user_id = ?');
             $stmt->execute([$hash, $_SESSION['user_id']]);
             session_regenerate_id(true);
+            $_SESSION['must_change_password'] = false;
             audit_log('password.change.success');
             $message = 'Your password has been changed.';
             $success = true;

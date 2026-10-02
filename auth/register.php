@@ -2,21 +2,23 @@
 
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/auth.php';
+require_once __DIR__ . '/../config/patients.php';
 
 $message = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_verify();
 
-    $nameInput = $_POST['name'] ?? '';
     $emailInput = $_POST['email'] ?? '';
-    $name = is_string($nameInput) ? trim($nameInput) : '';
+    $firstName = request_string($_POST, 'first_name');
+    $lastName = request_string($_POST, 'last_name');
     $email = is_string($emailInput) ? trim($emailInput) : '';
     $password = $_POST['password'] ?? '';
     $confirm_password = $_POST['confirm_password'] ?? '';
 
     if (
-        empty($name) ||
+        $firstName === '' ||
+        $lastName === '' ||
         empty($email) ||
         empty($password) ||
         empty($confirm_password)
@@ -24,9 +26,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $message = 'Please fill in all fields.';
 
-    } elseif (strlen($name) > 150 || strlen($email) > 254 || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+    } elseif (
+        strlen($firstName) > 50
+        || strlen($lastName) > 50
+        || strlen($firstName . ' ' . $lastName) > 100
+        || strlen($email) > 254
+        || !filter_var($email, FILTER_VALIDATE_EMAIL)
+    ) {
 
-        $message = 'Please enter a valid name and email address.';
+        $message = 'Please enter a valid first name, last name, and email address.';
 
     } elseif (!is_string($password) || !is_string($confirm_password) || strlen($password) < 12 || strlen($password) > 1024) {
 
@@ -53,28 +61,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         } else {
 
-            // Hash password
-            $hashed_password = password_hash(
-                $password,
-                PASSWORD_DEFAULT
-            );
-
-            // Create account
-            $stmt = $pdo->prepare(
-                "INSERT INTO users (name, email, password, role)
-                 VALUES (?, ?, ?, 'patient')"
-            );
-
-            $stmt->execute([
-                $name,
-                $email,
-                $hashed_password
-            ]);
-
-            audit_log('account.registered', ['new_user_id' => (int) $pdo->lastInsertId()]);
-
-            header('Location: login.php?registered=1');
-            exit;
+            try {
+                $account = create_patient_account($pdo, $firstName, $lastName, $email, $password);
+                audit_log('account.registered', [
+                    'new_user_id' => $account['user_id'],
+                    'patient_id' => $account['patient_id'],
+                ]);
+                header('Location: login.php?registered=1');
+                exit;
+            } catch (PDOException $error) {
+                if ($error->getCode() === '23000') {
+                    $message = 'An account with this email already exists.';
+                } else {
+                    error_log('Patient registration failed: ' . $error->getMessage());
+                    $message = 'Unable to create your account right now. Please try again.';
+                }
+            }
         }
     }
 }
@@ -435,17 +437,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <?= csrf_field() ?>
 
 
-            <!-- Name -->
+            <!-- Patient name -->
 
-            <label for="name">
-                Full Name
+            <label for="first_name">
+                First Name
             </label>
 
             <input
                 type="text"
-                id="name"
-                name="name"
-                placeholder="Enter your full name"
+                id="first_name"
+                name="first_name"
+                maxlength="50"
+                autocomplete="given-name"
+                placeholder="Enter your first name"
+                required
+            >
+
+            <label for="last_name">
+                Last Name
+            </label>
+
+            <input
+                type="text"
+                id="last_name"
+                name="last_name"
+                maxlength="50"
+                autocomplete="family-name"
+                placeholder="Enter your last name"
                 required
             >
 

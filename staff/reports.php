@@ -123,6 +123,7 @@ $statusStyles = [
     </style>
 </head>
 <body>
+<?php require __DIR__ . '/../includes/navigation.php'; ?>
 <header class="topbar screen-only">
     <nav class="navbar navbar-expand-lg container-fluid px-3 px-lg-5">
         <a class="brand navbar-brand" href="dashboard.php"><i class="fa-solid fa-tooth"></i> The Tooth Lounge</a>

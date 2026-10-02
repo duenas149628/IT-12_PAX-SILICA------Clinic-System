@@ -9,9 +9,6 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'patient') {
 }
 
 $patientName = $_SESSION['name'] ?? 'Patient';
-$notificationStmt = $pdo->prepare('SELECT COUNT(*) FROM notifications WHERE recipient_user_id = ? AND read_at IS NULL');
-$notificationStmt->execute([$_SESSION['user_id']]);
-$unreadNotificationCount = (int) $notificationStmt->fetchColumn();
 
 /*
 |--------------------------------------------------------------------------
@@ -475,84 +472,9 @@ if ($patientId) {
 </head>
 
 <body>
+<?php require __DIR__ . '/../includes/navigation.php'; ?>
 
     <!-- HEADER -->
-
-    <header class="header">
-
-        <div class="logo">
-
-            <div class="logo-icon">
-
-                <i class="fa-solid fa-tooth"></i>
-
-            </div>
-
-            The Tooth Lounge
-
-        </div>
-
-
-        <nav class="nav">
-
-            <a href="dashboard.php">
-
-                <i class="fa-solid fa-gauge-high"></i>
-
-                Dashboard
-
-            </a>
-
-
-            <a href="profile.php">
-
-                <i class="fa-solid fa-user"></i>
-
-                Profile
-
-            </a>
-
-
-            <a href="appointments.php">
-
-                <i class="fa-solid fa-calendar-check"></i>
-
-                Appointments
-
-            </a>
-
-            <a href="../notifications.php">
-                <i class="fa-regular fa-bell"></i>
-                Notifications<?= $unreadNotificationCount > 0 ? ' (' . h($unreadNotificationCount) . ')' : '' ?>
-            </a>
-
-
-            <a href="visit_history.php">
-
-                <i class="fa-solid fa-file-medical"></i>
-
-                Records
-
-            </a>
-
-            <a href="../auth/password_change.php">Change password</a>
-
-
-            <a
-                href="../auth/logout.php"
-                class="logout"
-            >
-
-                <i class="fa-solid fa-right-from-bracket"></i>
-
-                Logout
-
-            </a>
-
-        </nav>
-
-    </header>
-
 
     <!-- MAIN -->
 

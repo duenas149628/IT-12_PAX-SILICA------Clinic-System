@@ -33,7 +33,7 @@ if (!$patient) {
 $patientId = $patient['patient_id'];
 $patientNumber = $patient['patient_number'] ?? 'Not assigned';
 
-$visitDate = trim($_GET['visit_date'] ?? '');
+$visitDate = request_string($_GET, 'visit_date');
 if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $visitDate)
     || !checkdate((int) substr($visitDate, 5, 2), (int) substr($visitDate, 8, 2), (int) substr($visitDate, 0, 4))) {
     $visitDate = '';
@@ -532,52 +532,7 @@ $visits = $stmt->fetchAll();
 </head>
 
 <body>
-
-<header class="header">
-
-    <div class="logo">
-
-        <div class="logo-icon">
-            <i class="fa-solid fa-tooth"></i>
-        </div>
-
-        The Tooth Lounge
-
-    </div>
-
-    <nav class="nav">
-
-        <a href="dashboard.php">
-            <i class="fa-solid fa-gauge-high"></i>
-            Dashboard
-        </a>
-
-        <a href="profile.php">
-            <i class="fa-solid fa-user"></i>
-            Profile
-        </a>
-
-        <a href="appointments.php">
-            <i class="fa-solid fa-calendar-check"></i>
-            Appointments
-        </a>
-
-        <a href="visit_history.php">
-            <i class="fa-solid fa-file-medical"></i>
-            Records
-        </a>
-
-        <a
-            href="../auth/logout.php"
-            class="logout"
-        >
-            <i class="fa-solid fa-right-from-bracket"></i>
-            Logout
-        </a>
-
-    </nav>
-
-</header>
+<?php require __DIR__ . '/../includes/navigation.php'; ?>
 
 <main class="container">
 
@@ -679,7 +634,7 @@ $visits = $stmt->fetchAll();
             </div>
 
             <aside class="latest-card">
-                <span class="latest-label"><i class="fa-solid fa-sparkles" aria-hidden="true"></i>Latest visit</span>
+                <span class="latest-label"><i class="fa-solid fa-sparkles" aria-hidden="true"></i>Latest matching visit</span>
                 <?php if ($visits): ?>
                     <?php $latestVisit = $visits[0]; ?>
                     <div class="latest-date"><i class="fa-solid fa-calendar-check" aria-hidden="true"></i> <?= h(date('M d, Y', strtotime($latestVisit['visit_date']))) ?></div>

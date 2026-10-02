@@ -53,16 +53,43 @@ $messageType = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_verify();
 
-    $firstName = trim($_POST['first_name'] ?? '');
-    $lastName = trim($_POST['last_name'] ?? '');
-    $birthDate = trim($_POST['birth_date'] ?? '');
-    $sex = trim($_POST['sex'] ?? '');
-    $contactNumber = trim($_POST['contact_number'] ?? '');
-    $address = trim($_POST['address'] ?? '');
+    $firstName = request_string($_POST, 'first_name');
+    $lastName = request_string($_POST, 'last_name');
+    $birthDate = request_string($_POST, 'birth_date');
+    $sex = request_string($_POST, 'sex');
+    $contactNumber = request_string($_POST, 'contact_number');
+    $address = request_string($_POST, 'address');
+    $patient['first_name'] = $firstName;
+    $patient['last_name'] = $lastName;
+    $patient['birth_date'] = $birthDate;
+    $patient['sex'] = $sex;
+    $patient['contact_number'] = $contactNumber;
+    $patient['address'] = $address;
+
+    $birthDateValue = $birthDate !== '' ? DateTimeImmutable::createFromFormat('!Y-m-d', $birthDate) : null;
+    $birthDateValid = $birthDate === '' || (
+        $birthDateValue !== false
+        && $birthDateValue !== null
+        && $birthDateValue->format('Y-m-d') === $birthDate
+        && $birthDateValue <= new DateTimeImmutable('today')
+    );
 
     if ($firstName === '' || $lastName === '') {
 
         $message = 'First name and last name are required.';
+        $messageType = 'error';
+
+    } elseif (
+        strlen($firstName) > 50
+        || strlen($lastName) > 50
+        || strlen($firstName . ' ' . $lastName) > 100
+        || strlen($contactNumber) > 20
+        || strlen($address) > 255
+        || !in_array($sex, ['', 'Male', 'Female'], true)
+        || !$birthDateValid
+    ) {
+
+        $message = 'Check the name, birth date, sex, contact number, and address values.';
         $messageType = 'error';
 
     } else {
@@ -572,52 +599,7 @@ if (isset($_GET['updated'])) {
 </head>
 
 <body>
-
-<header class="header">
-
-    <div class="logo">
-
-        <div class="logo-icon">
-            <i class="fa-solid fa-tooth"></i>
-        </div>
-
-        The Tooth Lounge
-
-    </div>
-
-    <nav class="nav">
-
-        <a href="dashboard.php">
-            <i class="fa-solid fa-gauge-high"></i>
-            Dashboard
-        </a>
-
-        <a href="profile.php">
-            <i class="fa-solid fa-user"></i>
-            Profile
-        </a>
-
-        <a href="appointments.php">
-            <i class="fa-solid fa-calendar-check"></i>
-            Appointments
-        </a>
-
-        <a href="visit_history.php">
-            <i class="fa-solid fa-file-medical"></i>
-            Records
-        </a>
-
-        <a
-            href="../auth/logout.php"
-            class="logout"
-        >
-            <i class="fa-solid fa-right-from-bracket"></i>
-            Logout
-        </a>
-
-    </nav>
-
-</header>
+<?php require __DIR__ . '/../includes/navigation.php'; ?>
 
 <main class="container">
 
@@ -715,6 +697,7 @@ if (isset($_GET['updated'])) {
                         type="text"
                         id="first_name"
                         name="first_name"
+                        maxlength="50"
                         value="<?= htmlspecialchars(
                             $patient['first_name'] ?? ''
                         ) ?>"
@@ -734,6 +717,7 @@ if (isset($_GET['updated'])) {
                         type="text"
                         id="last_name"
                         name="last_name"
+                        maxlength="50"
                         value="<?= htmlspecialchars(
                             $patient['last_name'] ?? ''
                         ) ?>"
@@ -753,6 +737,7 @@ if (isset($_GET['updated'])) {
                         type="date"
                         id="birth_date"
                         name="birth_date"
+                        max="<?= h(date('Y-m-d')) ?>"
                         value="<?= htmlspecialchars(
                             $patient['birth_date'] ?? ''
                         ) ?>"
@@ -811,6 +796,7 @@ if (isset($_GET['updated'])) {
                         type="text"
                         id="contact_number"
                         name="contact_number"
+                        maxlength="20"
                         value="<?= htmlspecialchars(
                             $patient['contact_number'] ?? ''
                         ) ?>"
@@ -829,6 +815,7 @@ if (isset($_GET['updated'])) {
                     <textarea
                         id="address"
                         name="address"
+                        maxlength="255"
                         placeholder="Enter your complete address"
                     ><?= htmlspecialchars(
                         $patient['address'] ?? ''

@@ -61,6 +61,7 @@ $stmt = $pdo->prepare(
         preferred_date,
         preferred_start_time,
         preferred_end_time,
+        created_at,
         confirmed_date,
         confirmed_start_time,
         confirmed_end_time,
@@ -551,52 +552,7 @@ $appointments = $stmt->fetchAll();
 </head>
 
 <body>
-
-<header class="header">
-
-    <div class="logo">
-
-        <div class="logo-icon">
-            <i class="fa-solid fa-tooth"></i>
-        </div>
-
-        The Tooth Lounge
-
-    </div>
-
-    <nav class="nav">
-
-        <a href="dashboard.php">
-            <i class="fa-solid fa-gauge-high"></i>
-            Dashboard
-        </a>
-
-        <a href="profile.php">
-            <i class="fa-solid fa-user"></i>
-            Profile
-        </a>
-
-        <a href="appointments.php">
-            <i class="fa-solid fa-calendar-check"></i>
-            Appointments
-        </a>
-
-        <a href="visit_history.php">
-            <i class="fa-solid fa-file-medical"></i>
-            Records
-        </a>
-
-        <a
-            href="../auth/logout.php"
-            class="logout"
-        >
-            <i class="fa-solid fa-right-from-bracket"></i>
-            Logout
-        </a>
-
-    </nav>
-
-</header>
+<?php require __DIR__ . '/../includes/navigation.php'; ?>
 
 <main class="container">
 
@@ -705,11 +661,11 @@ $appointments = $stmt->fetchAll();
 
                         <div class="appointment-top">
 
-                            <div class="appointment-title">
-                                Appointment #<?= htmlspecialchars(
-                                    $appointment['appointment_id']
-                                ) ?>
-                            </div>
+                        <div class="appointment-title">
+                            Appointment #<?= htmlspecialchars(
+                                $appointment['appointment_id']
+                            ) ?>
+                        </div>
 
                             <span
                                 class="status <?= htmlspecialchars($statusClass) ?>"
@@ -720,6 +676,14 @@ $appointments = $stmt->fetchAll();
                             </span>
 
                         </div>
+
+                        <?php if (!empty($appointment['created_at'])): ?>
+                            <div class="detail">
+                                <i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i>
+                                <strong>Requested on:</strong>
+                                <?= h(date('M j, Y g:i A', strtotime($appointment['created_at']))) ?>
+                            </div>
+                        <?php endif; ?>
 
                         <?php if (
                             $status === 'confirmed' &&

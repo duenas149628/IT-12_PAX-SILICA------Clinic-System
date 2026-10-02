@@ -44,9 +44,6 @@ $completionRate = (int) $appointmentCount > 0
     ? (int) round(((int) $completedCount / (int) $appointmentCount) * 100)
     : 0;
 
-$notificationStmt = $pdo->prepare('SELECT COUNT(*) FROM notifications WHERE recipient_user_id = ? AND read_at IS NULL');
-$notificationStmt->execute([$_SESSION['user_id']]);
-$unreadNotificationCount = (int) $notificationStmt->fetchColumn();
 
 ?>
 
@@ -425,6 +422,7 @@ $unreadNotificationCount = (int) $notificationStmt->fetchColumn();
 
 
 <body>
+<?php require __DIR__ . '/../includes/navigation.php'; ?>
 
 
     <!-- HEADER -->
@@ -487,11 +485,6 @@ $unreadNotificationCount = (int) $notificationStmt->fetchColumn();
 
                 Reports
 
-            </a>
-
-            <a href="../notifications.php">
-                <i class="fa-regular fa-bell"></i>
-                Notifications<?= $unreadNotificationCount > 0 ? ' (' . h($unreadNotificationCount) . ')' : '' ?>
             </a>
 
             <a href="activity_log.php">

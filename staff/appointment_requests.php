@@ -121,6 +121,7 @@ $requests = $stmt->fetchAll();
 </head>
 
 <body>
+<?php require __DIR__ . '/../includes/navigation.php'; ?>
 
     <div class="header">
         <h1>Appointment Requests</h1>
